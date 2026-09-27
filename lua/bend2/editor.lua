@@ -117,10 +117,14 @@ end
 function M.build()
   local buf, path = cursor_context()
   if path == "" then vim.notify("Save the Bend 2 buffer before building it.", vim.log.levels.WARN); return end
-  local default = vim.fn.fnamemodify(path, ":r") .. ".js"
-  vim.ui.input({ prompt = "Bend 2 output file: ", default = default }, function(output)
+  vim.ui.select({ "JavaScript source", "Native executable", "Native executable (GPU-capable)" }, { prompt = "Bend 2 build profile" }, function(profile)
+    if not profile then return end
+    local suffix = profile == "JavaScript source" and ".js" or (vim.fn.has("win32") == 1 and ".exe" or "")
+    local default = vim.fn.fnamemodify(path, ":r") .. suffix
+    vim.ui.input({ prompt = "Bend 2 output file: ", default = default }, function(output)
     if not output or output == "" then return end
-    require("bend2.toolchain").build(path, output, workspace.root(buf, require("bend2").options), function(result) M.output("Bend 2 build", result) end)
+      require("bend2.toolchain").build(path, output, workspace.root(buf, require("bend2").options), function(result) M.output("Bend 2 build (" .. profile .. ")", result) end)
+    end)
   end)
 end
 
@@ -129,7 +133,22 @@ function M.run()
   if path == "" then vim.notify("Save the Bend 2 buffer before running it.", vim.log.levels.WARN); return end
   vim.ui.select({ "javascript", "native", "gpu" }, { prompt = "Bend 2 execution backend" }, function(profile)
     if not profile then return end
-    require("bend2.toolchain").run_profile(path, workspace.root(buf, require("bend2").options), profile, function(result) M.output("Bend 2 run (" .. profile .. ")", result) end)
+    local function execute(options)
+      require("bend2.toolchain").run_profile(path, workspace.root(buf, require("bend2").options), profile, function(result) M.output("Bend 2 run (" .. profile .. ")", result) end, options)
+    end
+    if profile == "javascript" then execute({}); return end
+    vim.ui.input({ prompt = "Optional positive thread count (empty for runtime default)" }, function(threads)
+      if threads == nil then return end
+      if threads ~= "" and (not threads:match("^%d+$") or tonumber(threads) < 1) then vim.notify("Threads must be a positive integer.", vim.log.levels.ERROR); return end
+      local options = { threads = threads ~= "" and tonumber(threads) or nil }
+      if profile ~= "gpu" then execute(options); return end
+      vim.ui.input({ prompt = "GPU memory (on or limit such as 4GB)", default = "on" }, function(memory)
+        if not memory then return end
+        if not memory:match("^(on)$") and not memory:match("^%d+%.?%d*[KMGTP]B$") then vim.notify("Use 'on' or a GPU memory limit such as 4GB.", vim.log.levels.ERROR); return end
+        options.gpu_memory = memory
+        execute(options)
+      end)
+    end)
   end)
 end
 
@@ -149,6 +168,96 @@ end
 function M.gate(kind)
   local root = workspace.root(vim.api.nvim_get_current_buf(), require("bend2").options)
   require("bend2.toolchain").gate(root, kind, function(result) M.output("Bend 2 " .. kind .. " gate", result) end)
+end
+
+function M.probe_backend()
+  local buf, path = cursor_context()
+  if path == "" then vim.notify("Save the Bend 2 buffer before probing it.", vim.log.levels.WARN); return end
+  vim.ui.select({ "javascript", "native", "gpu" }, { prompt = "Bend 2 backend to probe" }, function(profile)
+    if not profile then return end
+    require("bend2.toolchain").probe(path, workspace.root(buf, require("bend2").options), profile, function(result)
+      M.output("Bend 2 " .. profile .. " probe: " .. result.status, result.result or { code = nil, stderr = result.compiler and result.compiler.error or result.status })
+    end)
+  end)
+end
+
+function M.compare_backends()
+  local buf, path = cursor_context()
+  if path == "" then vim.notify("Save the Bend 2 buffer before comparing it.", vim.log.levels.WARN); return end
+  vim.ui.input({ prompt = "Backends (comma-separated)", default = "javascript,native" }, function(value)
+    if not value then return end
+    local profiles = {}
+    for profile in value:gmatch("[^,%s]+") do
+      if profile ~= "javascript" and profile ~= "native" and profile ~= "gpu" then vim.notify("Unknown backend: " .. profile, vim.log.levels.ERROR); return end
+      profiles[#profiles + 1] = profile
+    end
+    require("bend2.toolchain").compare(path, workspace.root(buf, require("bend2").options), profiles, function(result)
+      local lines = {}
+      for _, item in ipairs(result.runs or {}) do lines[#lines + 1] = string.format("%s: exit=%s", item.profile, tostring(item.result.code)) end
+      lines[#lines + 1] = "Comparable: " .. tostring(result.comparable)
+      lines[#lines + 1] = "Outputs match: " .. tostring(result.outputsMatch)
+      if result.error then lines[#lines + 1] = result.error end
+      M.output("Bend 2 backend comparison", { code = result.comparable and result.outputsMatch and 0 or 1, stdout = table.concat(lines, "\n"), stderr = result.error or "" })
+    end)
+  end)
+end
+
+function M.compare_project()
+  local buf = vim.api.nvim_get_current_buf()
+  require("bend2.toolchain").compare_project(workspace.root(buf, require("bend2").options), function(result)
+    local lines = {}
+    for _, item in ipairs(result.runs or {}) do lines[#lines + 1] = vim.fn.fnamemodify(item.file, ":.") .. ": comparable=" .. tostring(item.result.comparable) .. ", outputsMatch=" .. tostring(item.result.outputsMatch) end
+    if result.error then lines[#lines + 1] = result.error end
+    M.output("Bend 2 project backend comparison", { code = result.comparable and result.outputsMatch and 0 or 1, stdout = table.concat(lines, "\n"), stderr = result.error or "" })
+  end)
+end
+
+function M.benchmark()
+  local buf, path = cursor_context()
+  if path == "" then vim.notify("Save the Bend 2 buffer before benchmarking it.", vim.log.levels.WARN); return end
+  vim.ui.input({ prompt = "Benchmark repetitions", default = "3" }, function(value)
+    if not value then return end
+    vim.ui.input({ prompt = "Thread count (empty for runtime default)", default = "1" }, function(threads)
+      if threads == nil or (threads ~= "" and (not threads:match("^%d+$") or tonumber(threads) < 1)) then return end
+      vim.ui.select({ "off", "on", "4GB" }, { prompt = "Bend 2 GPU mode" }, function(gpu)
+        if not gpu then return end
+        require("bend2.toolchain").benchmark(path, workspace.root(buf, require("bend2").options), value, function(result)
+      local lines = { "ok: " .. tostring(result.ok) }
+      if result.ok then
+        lines[#lines + 1] = "median_ms: " .. tostring(result.median_ms)
+        lines[#lines + 1] = "min_ms: " .. tostring(result.min_ms)
+        lines[#lines + 1] = "max_ms: " .. tostring(result.max_ms)
+        lines[#lines + 1] = "samples_ms: " .. vim.inspect(result.samples_ms)
+        local report_dir = vim.fs.joinpath(workspace.root(buf, require("bend2").options), ".bend", "benchmarks")
+        vim.fn.mkdir(report_dir, "p")
+        local report = vim.fs.joinpath(report_dir, "bend2-" .. os.date("%Y%m%d-%H%M%S") .. ".json")
+        vim.fn.writefile({ vim.json.encode(result) }, report)
+        lines[#lines + 1] = "report: " .. report
+      elseif result.error then lines[#lines + 1] = result.error end
+      M.output("Bend 2 benchmark", { code = result.ok and 0 or 1, stdout = table.concat(lines, "\n"), stderr = result.error or "" })
+        end, { threads = threads ~= "" and tonumber(threads) or nil, gpu = gpu, warmup = true })
+      end)
+    end)
+  end)
+end
+
+function M.environment()
+  local buf = vim.api.nvim_get_current_buf()
+  local root = workspace.root(buf, require("bend2").options)
+  require("bend2.toolchain").discover(root, function(info)
+    M.output("Bend 2 execution environment", { code = 0, stdout = table.concat({ "Neovim: " .. vim.version().major .. "." .. vim.version().minor .. "." .. vim.version().patch, "OS: " .. vim.uv.os_uname().sysname .. " / " .. vim.uv.os_uname().machine, "Workspace: " .. root, "Compiler: " .. tostring(info.version or "unavailable"), "Compatibility: " .. info.compatibility, "Compiler command: " .. tostring(require("bend2").options.cmd) }, "\n"), stderr = info.error or "" })
+  end)
+end
+
+function M.support()
+  local buf = vim.api.nvim_get_current_buf()
+  local root = workspace.root(buf, require("bend2").options)
+  require("bend2.toolchain").discover(root, function(info)
+    local uname = vim.uv.os_uname()
+    local report = table.concat({ "Bend2.nvim: 0.1.0", "Neovim: " .. vim.version().major .. "." .. vim.version().minor .. "." .. vim.version().patch, "Host: " .. uname.sysname .. " " .. uname.release .. " " .. uname.machine, "Workspace: " .. root, "Compiler: " .. tostring(info.version or "unavailable"), "Compiler compatibility: " .. info.compatibility, "Compiler available: " .. tostring(info.available) }, "\n")
+    vim.fn.setreg("+", report)
+    M.output("Bend 2 support report (copied to clipboard)", { code = 0, stdout = report })
+  end)
 end
 
 function M.goto_definition()

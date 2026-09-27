@@ -171,7 +171,8 @@ function M.build(path, output, root, callback)
   M.run({ path, "-o", output }, root, callback, 120000)
 end
 
-function M.run_profile(path, root, profile, callback)
+function M.run_profile(path, root, profile, callback, options)
+  options = options or {}
   profile = profile or "javascript"
   if profile == "javascript" then
     M.run({ path }, root, callback, 120000)
@@ -183,7 +184,8 @@ function M.run_profile(path, root, profile, callback)
   M.build(path, executable, root, function(build)
     if build.code ~= 0 then vim.fn.delete(directory, "rf"); callback(build); return end
     local args = {}
-    if profile == "gpu" then args = { "--gpu", "on" } end
+    if options.threads then args = { "--threads", tostring(options.threads) } end
+    if profile == "gpu" then vim.list_extend(args, { "--gpu", options.gpu_memory or "on" }) end
     M.run_binary(executable, args, root, function(result)
       vim.fn.delete(directory, "rf")
       callback(result)
@@ -191,7 +193,7 @@ function M.run_profile(path, root, profile, callback)
   end)
 end
 
-function M.compare(path, root, profiles, callback)
+function M.compare(path, root, profiles, callback, options)
   local runs, index = {}, 1
   local function next_run()
     local profile = profiles[index]
@@ -208,10 +210,62 @@ function M.compare(path, root, profiles, callback)
       runs[#runs + 1] = { profile = profile, result = result }
       index = index + 1
       next_run()
-    end)
+    end, options)
   end
   if #profiles < 2 then callback({ comparable = false, outputsMatch = false, error = "Choose at least two backends." }); return end
   next_run()
+end
+
+function M.probe(path, root, profile, callback)
+  if profile == "javascript" then
+    M.check(path, root, function(result) callback({ profile = profile, status = result.code == 0 and "ready" or result.code == nil and "unavailable" or "failed", compiler = result.compiler, result = result }) end)
+  elseif profile == "native" then
+    local directory = vim.fn.tempname(); vim.fn.mkdir(directory, "p")
+    M.build(path, vim.fs.joinpath(directory, "probe"), root, function(result)
+      vim.fn.delete(directory, "rf")
+      callback({ profile = profile, status = result.code == 0 and "ready" or result.code == nil and "unavailable" or "failed", result = result })
+    end)
+  else
+    M.run_profile(path, root, "gpu", function(result)
+      callback({ profile = profile, status = result.code == 0 and "ready" or result.code == nil and "unavailable" or "failed", result = result })
+    end)
+  end
+end
+
+function M.compare_project(root, callback)
+  local manifest_path = vim.fs.joinpath(root, ".bend2", "differential.json")
+  local ok, content = pcall(vim.fn.readfile, manifest_path)
+  if not ok then callback({ comparable = false, outputsMatch = false, error = "Missing .bend2/differential.json." }); return end
+  local valid, manifest = pcall(vim.json.decode, table.concat(content, "\n"))
+  if not valid or type(manifest) ~= "table" or type(manifest.files) ~= "table" or #manifest.files == 0 then
+    callback({ comparable = false, outputsMatch = false, error = "Invalid differential manifest: files must be a non-empty array." }); return
+  end
+  local profiles = manifest.profiles or { "javascript", "native" }
+  if type(profiles) ~= "table" or #profiles < 2 then callback({ comparable = false, outputsMatch = false, error = "The differential manifest needs at least two profiles." }); return end
+  local files = {}
+  for _, relative in ipairs(manifest.files) do
+    if type(relative) ~= "string" or relative:match("^[/\\]") or relative:match("%.%.[/\\]") or relative == ".." then
+      callback({ comparable = false, outputsMatch = false, error = "Differential input paths must remain inside the workspace." }); return
+    end
+    local path = vim.fs.normalize(vim.fs.joinpath(root, relative))
+    if not path:match("%.bend$") or not vim.uv.fs_stat(path) then callback({ comparable = false, outputsMatch = false, error = "Differential input must be an existing .bend file: " .. relative }); return end
+    files[#files + 1] = path
+  end
+  local results, index = {}, 1
+  local function next_file()
+    local file = files[index]
+    if not file then
+      local comparable, matched = #results == #files, true
+      for _, result in ipairs(results) do comparable = comparable and result.comparable; matched = matched and result.outputsMatch end
+      callback({ runs = results, comparable = comparable, outputsMatch = comparable and matched }); return
+    end
+    M.compare(file, root, profiles, function(result)
+      results[#results + 1] = { file = file, result = result }
+      index = index + 1
+      next_file()
+    end)
+  end
+  next_file()
 end
 
 function M.gate(root, kind, callback)
@@ -223,13 +277,14 @@ function M.gate(root, kind, callback)
   callback({ code = nil, stdout = "", stderr = "Bend 2 " .. kind .. " gate was not found under scripts/" })
 end
 
-function M.benchmark(path, root, runs, callback)
+function M.benchmark(path, root, runs, callback, options)
+  options = options or {}
   runs = math.max(1, math.min(20, tonumber(runs) or 3))
   local directory = vim.fn.tempname(); vim.fn.mkdir(directory, "p")
   local executable, samples, index = vim.fs.joinpath(directory, "bend2-benchmark"), {}, 0
   M.build(path, executable, root, function(build)
     if build.code ~= 0 then vim.fn.delete(directory, "rf"); callback({ ok = false, error = build.stderr, compile = build }); return end
-    local function execute()
+    local function execute(warmup)
       if index >= runs then
         vim.fn.delete(directory, "rf")
         table.sort(samples)
@@ -238,14 +293,16 @@ function M.benchmark(path, root, runs, callback)
         return
       end
       local started = vim.uv.hrtime()
-      M.run_binary(executable, {}, root, function(result)
+      local args = {}
+      if options.threads then args = { "--threads", tostring(options.threads) } end
+      vim.list_extend(args, { "--gpu", options.gpu or "off" })
+      M.run_binary(executable, args, root, function(result)
         if result.code ~= 0 then vim.fn.delete(directory, "rf"); callback({ ok = false, error = result.stderr, compile = build }); return end
-        samples[#samples + 1] = (vim.uv.hrtime() - started) / 1000000
-        index = index + 1
-        execute()
+        if not warmup then samples[#samples + 1] = (vim.uv.hrtime() - started) / 1000000; index = index + 1 end
+        execute(false)
       end, 120000)
     end
-    execute()
+    execute(options.warmup ~= false)
   end)
 end
 
