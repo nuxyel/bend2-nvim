@@ -30,6 +30,35 @@ eq(root .. "/math.bend", target and target.path, "qualified import definition sh
 eq("add", target and target.symbol.name)
 vim.fn.delete(root, "rf")
 
+local fake_bend = vim.fn.tempname()
+vim.fn.writefile({
+  "#!/bin/sh",
+  "case \"$1\" in",
+  "  --version|version) echo 'Bend 2.0.32'; exit 0;;",
+  "  guide) echo 'JavaScript target native executable --gpu'; exit 0;;",
+  "esac",
+  "if [ \"$3\" = '--diagnostics=json' ]; then",
+  "  printf '%s\\n' '{\"protocolVersion\":1,\"diagnostics\":[{\"file\":\"fake.bend\",\"range\":{\"start\":{\"line\":2,\"column\":3}},\"severity\":\"error\",\"message\":\"fixture error\"}]}'",
+  "  exit 1",
+  "fi",
+  "exit 0",
+}, fake_bend)
+vim.fn.setfperm(fake_bend, "rwxr-xr-x")
+require("bend2").setup({ cmd = fake_bend })
+local toolchain, compiler_info = require("bend2.toolchain"), nil
+toolchain.discover(vim.fn.getcwd(), function(info) compiler_info = info end, true)
+assert(vim.wait(3000, function() return compiler_info ~= nil end), "compiler discovery callback timed out")
+eq("supported", compiler_info.compatibility)
+local check_result
+toolchain.check("fake.bend", vim.fn.getcwd(), function(result) check_result = result end)
+assert(vim.wait(3000, function() return check_result ~= nil end), "compiler check callback timed out")
+eq("fixture error", check_result.diagnostics[1].message)
+eq(1, check_result.diagnostics[1].line)
+local parsed_diagnostics = toolchain.parse_diagnostics('{"diagnostics":[{"file":"fake.bend","range":{"start":{"line":2,"column":3}},"message":"fixture error","severity":"error"}]}', "fake.bend")
+eq(1, parsed_diagnostics[1].line)
+eq(2, parsed_diagnostics[1].col)
+vim.fn.delete(fake_bend)
+
 local formatter = require("bend2.formatter")
 eq("def add x y = x + y\n", formatter.format("def add x y=x+y\n"), "formatter should normalize operator spacing")
 eq("# comment\n", formatter.format("# comment\n"), "formatter should preserve comment-only lines")

@@ -22,6 +22,7 @@ end
 
 function M.setup(opts)
   M.options = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
+  require("bend2.toolchain").cache = {}
   assert(({ parser = true, on_save = true, on_type = true, off = true })[M.options.validation], "bend2.validation must be parser, on_save, on_type, or off")
   assert(({ auto = true, text = true, json = true })[M.options.diagnostics_mode], "bend2.diagnostics_mode must be auto, text, or json")
   if configured then return M end
@@ -32,13 +33,17 @@ function M.setup(opts)
   vim.api.nvim_create_autocmd("FileType", { group = group, pattern = "bend", callback = function(event)
     vim.bo[event.buf].omnifunc = "v:lua.require'bend2.editor'.complete"
     vim.bo[event.buf].formatexpr = "v:lua.require'bend2.editor'.format_expr"
-    editor.parse_buffer(event.buf)
+    editor.validate_buffer(event.buf)
   end })
   vim.api.nvim_create_autocmd({ "BufWritePost", "TextChanged", "TextChangedI" }, { group = group, pattern = "*.bend", callback = function(event)
     if M.options.validation == "off" then vim.diagnostic.reset(M.namespace, event.buf); return end
-    if M.options.validation == "on_type" and event.event ~= "BufWritePost" then
-      vim.defer_fn(function() if vim.api.nvim_buf_is_valid(event.buf) then editor.parse_buffer(event.buf) end end, 250)
-    elseif event.event == "BufWritePost" or M.options.validation == "parser" then editor.parse_buffer(event.buf) end
+    if event.event == "BufWritePost" then editor.validate_buffer(event.buf, true)
+    elseif M.options.validation == "on_type" then
+      local tick = vim.api.nvim_buf_get_changedtick(event.buf)
+      vim.defer_fn(function()
+        if vim.api.nvim_buf_is_valid(event.buf) and vim.api.nvim_buf_get_changedtick(event.buf) == tick then editor.validate_buffer(event.buf) end
+      end, 350)
+    elseif M.options.validation == "parser" then editor.parse_buffer(event.buf) end
   end })
 
   command("Bend2Help", function()
@@ -60,6 +65,14 @@ function M.setup(opts)
   command("Bend2Hover", editor.hover, "Show Bend 2 symbol details")
   command("Bend2Signature", editor.signature, "Show Bend 2 function signature")
   command("Bend2Symbols", editor.symbols, "List Bend 2 workspace symbols")
+  command("Bend2Check", editor.check_current, "Check the current Bend 2 file")
+  command("Bend2CheckWorkspace", editor.check_workspace, "Check every Bend 2 file in the workspace")
+  command("Bend2Build", editor.build, "Build the current Bend 2 file")
+  command("Bend2Run", editor.run, "Run the current Bend 2 file")
+  command("Bend2Version", editor.show_version, "Show the Bend 2 compiler version")
+  command("Bend2Base", function(args) editor.base(args) end, "Show Bend 2 base definitions", { nargs = "*" })
+  command("Bend2RunProjectGate", function() editor.gate("check") end, "Run the Bend 2 project gate")
+  command("Bend2RunSabotage", function() editor.gate("sabotage") end, "Run the Bend 2 sabotage gate")
   return M
 end
 

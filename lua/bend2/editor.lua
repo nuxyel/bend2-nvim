@@ -23,10 +23,132 @@ function M.set_diagnostics(buf, parsed)
   vim.diagnostic.set(require("bend2").namespace, buf, items, {})
 end
 
+function M.output(title, result)
+  local lines = { title, string.rep("=", #title), "Exit code: " .. tostring(result.code == nil and "unavailable" or result.code) }
+  if result.stderr and result.stderr ~= "" then
+    lines[#lines + 1] = ""
+    for line in result.stderr:gmatch("[^\n]+") do lines[#lines + 1] = line end
+  end
+  if result.stdout and result.stdout ~= "" then
+    lines[#lines + 1] = ""
+    for line in result.stdout:gmatch("[^\n]+") do lines[#lines + 1] = line end
+  end
+  vim.cmd("botright new")
+  vim.bo.buftype, vim.bo.bufhidden, vim.bo.swapfile, vim.bo.filetype = "nofile", "wipe", false, "bend2log"
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
+  vim.bo.modifiable = false
+end
+
+local function publish_compiler_result(buf, path, root, result)
+  local parsed = parser.parse(table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n"), path)
+  local items = {}
+  for _, diagnostic in ipairs(parsed.diagnostics) do
+    local r = diagnostic.range
+    items[#items + 1] = { lnum = r.start.line, col = r.start.character, end_lnum = r.finish.line, end_col = r.finish.character, message = diagnostic.message, severity = diagnostic.severity == "error" and vim.diagnostic.severity.ERROR or vim.diagnostic.severity.WARN, source = diagnostic.source }
+  end
+  for _, diagnostic in ipairs(result.diagnostics or {}) do
+    local diagnostic_path = diagnostic.file
+    if diagnostic_path and not vim.fs.is_absolute(diagnostic_path) then diagnostic_path = vim.fs.joinpath(root, diagnostic_path) end
+    if diagnostic_path and vim.fs.normalize(diagnostic_path) == vim.fs.normalize(path) then
+      items[#items + 1] = { lnum = diagnostic.line, col = diagnostic.col, message = diagnostic.message, severity = diagnostic.severity == "warning" and vim.diagnostic.severity.WARN or vim.diagnostic.severity.ERROR, source = "Bend 2 compiler" }
+    end
+  end
+  vim.diagnostic.set(require("bend2").namespace, buf, items, {})
+end
+
 function M.parse_buffer(buf)
   if not vim.api.nvim_buf_is_valid(buf) or vim.bo[buf].filetype ~= "bend" then return end
   local source = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
   M.set_diagnostics(buf, parser.parse(source, vim.api.nvim_buf_get_name(buf)))
+end
+
+function M.validate_buffer(buf, immediate)
+  if not vim.api.nvim_buf_is_valid(buf) or vim.bo[buf].filetype ~= "bend" then return end
+  if require("bend2").options.validation == "off" then vim.diagnostic.reset(require("bend2").namespace, buf); return end
+  M.parse_buffer(buf)
+  if require("bend2").options.validation == "parser" then return end
+  local path = vim.api.nvim_buf_get_name(buf)
+  if path == "" then return end
+  local root = workspace.root(buf, require("bend2").options)
+  local changedtick = vim.api.nvim_buf_get_changedtick(buf)
+  require("bend2.toolchain").check(path, root, function(result)
+    if not vim.api.nvim_buf_is_valid(buf) or vim.api.nvim_buf_get_changedtick(buf) ~= changedtick then return end
+    if not result.compiler or not result.compiler.available then
+      if result.stderr and result.stderr ~= "" then vim.notify(result.stderr, vim.log.levels.WARN, { title = "Bend 2" }) end
+      return
+    end
+    publish_compiler_result(buf, path, root, result)
+  end)
+end
+
+function M.check_current()
+  local buf, path = cursor_context()
+  if path == "" then vim.notify("Save the Bend 2 buffer before checking it.", vim.log.levels.WARN); return end
+  local root = workspace.root(buf, require("bend2").options)
+  require("bend2.toolchain").check(path, root, function(result)
+    if vim.api.nvim_buf_is_valid(buf) then publish_compiler_result(buf, path, root, result) end
+    M.output("Bend 2 check: " .. vim.fn.fnamemodify(path, ":."), result)
+  end)
+end
+
+function M.check_workspace()
+  local buf = vim.api.nvim_get_current_buf()
+  local root, files = workspace.root(buf, require("bend2").options), workspace.files(workspace.root(buf, require("bend2").options))
+  local index, failed, output = 1, 0, {}
+  local function next_file()
+    local path = files[index]
+    if not path then
+      M.output("Bend 2 workspace check", { code = failed == 0 and 0 or 1, stdout = table.concat(output, "\n") })
+      return
+    end
+    require("bend2.toolchain").check(path, root, function(result)
+      if result.code ~= 0 then failed = failed + 1 end
+      output[#output + 1] = path .. ": " .. (result.code == 0 and "PASS" or "FAIL")
+      if result.stderr and result.stderr ~= "" then output[#output + 1] = result.stderr end
+      local target_buf = vim.fn.bufnr(path)
+      if target_buf > 0 and vim.api.nvim_buf_is_loaded(target_buf) then publish_compiler_result(target_buf, path, root, result) end
+      index = index + 1
+      next_file()
+    end)
+  end
+  next_file()
+end
+
+function M.build()
+  local buf, path = cursor_context()
+  if path == "" then vim.notify("Save the Bend 2 buffer before building it.", vim.log.levels.WARN); return end
+  local default = vim.fn.fnamemodify(path, ":r") .. ".js"
+  vim.ui.input({ prompt = "Bend 2 output file: ", default = default }, function(output)
+    if not output or output == "" then return end
+    require("bend2.toolchain").build(path, output, workspace.root(buf, require("bend2").options), function(result) M.output("Bend 2 build", result) end)
+  end)
+end
+
+function M.run()
+  local buf, path = cursor_context()
+  if path == "" then vim.notify("Save the Bend 2 buffer before running it.", vim.log.levels.WARN); return end
+  vim.ui.select({ "javascript", "native", "gpu" }, { prompt = "Bend 2 execution backend" }, function(profile)
+    if not profile then return end
+    require("bend2.toolchain").run_profile(path, workspace.root(buf, require("bend2").options), profile, function(result) M.output("Bend 2 run (" .. profile .. ")", result) end)
+  end)
+end
+
+function M.show_version()
+  local buf = vim.api.nvim_get_current_buf()
+  local root = workspace.root(buf, require("bend2").options)
+  require("bend2.toolchain").discover(root, function(info)
+    M.output("Bend 2 compiler", { code = info.available and 0 or nil, stdout = "Version: " .. tostring(info.version or "unavailable") .. "\nCompatibility: " .. info.compatibility, stderr = info.error or "" })
+  end, true)
+end
+
+function M.base(args)
+  local root = workspace.root(vim.api.nvim_get_current_buf(), require("bend2").options)
+  require("bend2.toolchain").command(vim.list_extend({ "base" }, args.fargs), root, function(result) M.output("Bend 2 base", result) end)
+end
+
+function M.gate(kind)
+  local root = workspace.root(vim.api.nvim_get_current_buf(), require("bend2").options)
+  require("bend2.toolchain").gate(root, kind, function(result) M.output("Bend 2 " .. kind .. " gate", result) end)
 end
 
 function M.goto_definition()
