@@ -73,6 +73,13 @@ function M.setup(opts)
   command("Bend2Base", function(args) editor.base(args) end, "Show Bend 2 base definitions", { nargs = "*" })
   command("Bend2RunProjectGate", function() editor.gate("check") end, "Run the Bend 2 project gate")
   command("Bend2RunSabotage", function() editor.gate("sabotage") end, "Run the Bend 2 sabotage gate")
+  local proof = require("bend2.proof")
+  command("Bend2Proofs", proof.open_explorer, "Open Bend 2 Proof Explorer")
+  command("Bend2OpenProof", proof.open_proof, "Open the selected law proof")
+  command("Bend2ProofDetails", proof.details, "Show law and proof details")
+  command("Bend2ProofGoal", proof.goal_command, "Go to an open proof goal")
+  command("Bend2CheckProof", proof.check_proof, "Check the selected proof file")
+  command("Bend2ReviewLawChanges", proof.review_changes, "Review law changes without modifying them")
   return M
 end
 

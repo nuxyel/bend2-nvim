@@ -59,6 +59,15 @@ eq(1, parsed_diagnostics[1].line)
 eq(2, parsed_diagnostics[1].col)
 vim.fn.delete(fake_bend)
 
+local proof = require("bend2.proof")
+local proof_source = "def Laws.add_zero =\n  ?TODO\ndef Laws.next = 0"
+eq("open", proof.status(proof_source, "add_zero"))
+eq("?TODO", proof.goal(proof_source, "add_zero").token)
+eq("unsafe", proof.status("def Laws.safe =\n  @unsafe proof", "safe"))
+eq({ "normalize", "same" }, proof.dependencies("def Laws.add_zero = normalize(x) && same(x)", "add_zero"))
+local reviewed = proof.allowlist("# approved entries\nnormalize\n")
+assert(reviewed.normalize and not reviewed.other)
+
 local formatter = require("bend2.formatter")
 eq("def add x y = x + y\n", formatter.format("def add x y=x+y\n"), "formatter should normalize operator spacing")
 eq("# comment\n", formatter.format("# comment\n"), "formatter should preserve comment-only lines")
