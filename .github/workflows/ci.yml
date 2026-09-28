@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        nvim: ["0.11.7", "0.12.5"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Neovim
+        env:
+          NVIM_VERSION: ${{ matrix.nvim }}
+        run: |
+          curl -fsSLO "https://github.com/neovim/neovim/releases/download/v${NVIM_VERSION}/nvim-linux-x86_64.tar.gz"
+          tar -xzf nvim-linux-x86_64.tar.gz
+          echo "$PWD/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
+          nvim --version | head -n 1
+      - name: Run headless tests
+        run: nvim --headless -u NONE -l tests/run.lua
+
+  dogfood:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        bend: ["2.0.28", "2.0.32"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Neovim
+        run: |
+          curl -fsSLO https://github.com/neovim/neovim/releases/download/v0.12.5/nvim-linux-x86_64.tar.gz
+          tar -xzf nvim-linux-x86_64.tar.gz
+          echo "$PWD/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
+      - name: Install checksum-verified Bend
+        env:
+          BEND_VERSION: ${{ matrix.bend }}
+        run: |
+          if [ "$BEND_VERSION" = "2.0.28" ]; then
+            expected="22bb6d5f6bce8ae2c5b340371fedddcbd90edc07a48b6e2b351a944c4558a3eb"
+          else
+            expected="5c365ddb12954d0933cef751802e0f7d9875f842edcb80f9661f89cd1a9ff7b6"
+          fi
+          archive="bend-${BEND_VERSION}-linux-x64.tar.gz"
+          curl -fsSLo "$archive" "https://github.com/bendlang/bend/releases/download/v${BEND_VERSION}/${archive}"
+          echo "$expected  $archive" | sha256sum --check
+          mkdir bend-dist
+          tar -xzf "$archive" -C bend-dist
+          echo "$PWD/bend-dist/bend/bin" >> "$GITHUB_PATH"
+          printf 'BEND_DOGFOOD_VERSION=%s\n' "$BEND_VERSION" >> "$GITHUB_ENV"
+      - name: Run compiler dogfood
+        run: nvim --headless -u NONE -l tests/dogfood.lua

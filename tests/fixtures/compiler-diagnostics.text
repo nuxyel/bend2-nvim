@@ -1,0 +1,2 @@
+examples/type-error.bend:4:9: error: expected Nat
+examples/type-error.bend:8:3: warning: open goal

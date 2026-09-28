@@ -1,0 +1,12 @@
+Error:
+- expected : a name (got the keyword 'match')
+- observed : ' '
+Location:
+1 | def unfinished(value: Nat
+2>|   match value
+
+Error:
+- message : no such file: missing.bend
+Location:
+1>| import ./missing.bend as Missing
+2 | 

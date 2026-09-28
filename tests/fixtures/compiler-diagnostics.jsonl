@@ -1,0 +1,2 @@
+{"file":"examples/type-error.bend","start":{"line":4,"column":9},"end":{"line":4,"column":12},"severity":"error","code":"BND-TYPE","message":"expected Nat","expected":"Nat","actual":"Bool"}
+{"file":"examples/type-error.bend","start":{"line":8,"column":3},"severity":"warning","message":"open goal","relatedInformation":[{"file":"examples/LAWS.bend","start":{"line":2,"column":1},"message":"law declared here"}]}

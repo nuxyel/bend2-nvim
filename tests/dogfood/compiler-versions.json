@@ -1,0 +1,10 @@
+{
+  "minimum": {
+    "version": "2.0.28",
+    "linuxX64Sha256": "22bb6d5f6bce8ae2c5b340371fedddcbd90edc07a48b6e2b351a944c4558a3eb"
+  },
+  "latest": {
+    "version": "2.0.32",
+    "linuxX64Sha256": "5c365ddb12954d0933cef751802e0f7d9875f842edcb80f9661f89cd1a9ff7b6"
+  }
+}
