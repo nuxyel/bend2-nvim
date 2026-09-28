@@ -55,7 +55,7 @@ require("bend2").setup({
 })
 ```
 
-See [docs/SUPPORT.md](docs/SUPPORT.md), [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md),
+See [Installation options](docs/INSTALLATION.md), [docs/SUPPORT.md](docs/SUPPORT.md), [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md),
 [docs/DIFFERENTIAL.md](docs/DIFFERENTIAL.md), [docs/RELEASING.md](docs/RELEASING.md),
 and [CHANGELOG.md](CHANGELOG.md).
 

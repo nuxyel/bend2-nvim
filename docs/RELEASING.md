@@ -1,7 +1,9 @@
 # Private v1 release gate
 
-The v1 release is distributed as a private Git repository release. No public
-plugin registry or marketplace is part of this release.
+The v1 release is distributed as a private Git repository release. Git tags
+are the version source consumed by Neovim plugin managers; no separate package
+registry, LuaRocks upload, marketplace listing, or compiled archive is needed.
+See [INSTALLATION.md](INSTALLATION.md) for user installation paths.
 
 ## Required checks
 
@@ -29,9 +31,10 @@ plugin registry or marketplace is part of this release.
 4. Keep each remaining correction in its own focused commit. Do not combine
    release metadata changes with runtime behavior changes.
 5. Create an annotated `v1.0.0` tag only after the complete CI matrix passes.
-   Create a private GitHub release from that tag and attach the source archive
-   and changelog. Verify the repository and release are private before sharing
-   access with testers.
+   Create a private GitHub release from that tag and publish the changelog in
+   the release notes. GitHub supplies source archives for the tag; do not
+   upload redundant compiled assets. Verify the repository and release are
+   private before sharing access with testers.
 
 The checked-in 1.0.0 candidate has passed the required CI matrix. Keep tag
 creation and the private GitHub release as a separate maintainer step; any code
