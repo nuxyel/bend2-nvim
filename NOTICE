@@ -1,0 +1,7 @@
+Bend 2 for Neovim includes formatter logic derived from the official Bend 2
+`bend-fmt-lsp` implementation:
+
+  https://github.com/bendlang/bend/tree/main/tools/bend-fmt-lsp
+
+The Lua implementation adapts the upstream formatter contract. See the source
+header in `lua/bend2/formatter.lua` and the upstream project for its license.
