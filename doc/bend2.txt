@@ -22,7 +22,7 @@ the compiler is unavailable. Compiler checks are the source of truth.
 =============================================================================
 2. INSTALLATION                                                 *bend2-installation*
 
-Install the private Git repository with your plugin manager, then add this to
+Install the public Git repository with your plugin manager, then add this to
 your config:
 
     require("bend2").setup()
