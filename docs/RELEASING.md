@@ -1,41 +1,38 @@
-# Private v1 release gate
+# Releasing
 
-The v1 release is distributed as a private Git repository release. Git tags
-are the version source consumed by Neovim plugin managers; no separate package
-registry, LuaRocks upload, marketplace listing, or compiled archive is needed.
-See [INSTALLATION.md](INSTALLATION.md) for user installation paths.
+Bend2.nvim is distributed as a public Git repository. SemVer Git tags are the
+version source used by Neovim plugin managers; no separate package registry,
+LuaRocks upload, marketplace listing, or compiled archive is needed. GitHub
+generates source archives for each tag. See [INSTALLATION.md](INSTALLATION.md)
+for user installation paths.
 
 ## Required checks
 
 1. Run `nvim --headless -u NONE -l tests/run.lua` on Neovim 0.11.7 and 0.12.5.
 2. Run `tests/dogfood.lua` with Bend 2.0.28 (the minimum supported version) and
-   the latest supported Bend release. Both compiler archives must have their
-   published SHA-256 pins recorded in CI and `tests/dogfood/compiler-versions.json`.
+   the latest supported Bend release. Record published SHA-256 pins in CI and
+   `tests/dogfood/compiler-versions.json`.
 3. Confirm the CI matrix is green on Linux x86-64 and macOS arm64. Windows
    support means Neovim and Bend run inside WSL; the Linux job is its execution
    baseline.
-4. Review formatter parity with the upstream Bend formatter, compiler
-   diagnostics fixtures, proof statuses, workspace navigation and rename,
-   cancellation, backend capability handling, and generated benchmark reports.
-5. Check the complete command/configuration documentation and verify that the
-   plugin starts without optional Neovim plugins or Node.js.
+4. Review formatter parity, compiler diagnostics, proof statuses, workspace
+   navigation and rename, cancellation, backend capabilities, and benchmark
+   reports.
+5. Check command/configuration documentation and verify the plugin starts
+   without optional Neovim plugins or Node.js.
 
-## Preparing the private tag
+## Publishing a release
 
-1. Confirm `lua/bend2/version.lua` and the dated heading in `CHANGELOG.md` both
-   identify version 1.0.0. If either changes, rerun the complete CI matrix.
-2. Update the latest Bend dogfood version and checksums from the official Bend
-   release page; retain Bend 2.0.28 as the minimum compatibility check.
-3. Run all applicable local checks, inspect `git diff --check`, and confirm
-   `git status --short` is empty.
-4. Keep each remaining correction in its own focused commit. Do not combine
-   release metadata changes with runtime behavior changes.
-5. Create an annotated `v1.0.0` tag only after the complete CI matrix passes.
-   Create a private GitHub release from that tag and publish the changelog in
-   the release notes. GitHub supplies source archives for the tag; do not
-   upload redundant compiled assets. Verify the repository and release are
-   private before sharing access with testers.
+1. Keep `lua/bend2/version.lua` and the matching `CHANGELOG.md` heading on the
+   same SemVer version. Update the changelog before tagging.
+2. Run all applicable local checks and the full CI matrix. Inspect
+   `git diff --check` and confirm the working tree is clean.
+3. Keep each correction in its own focused commit. Do not combine release
+   metadata changes with runtime behavior changes.
+4. Create an annotated `v<major>.<minor>.<patch>` tag only after CI passes.
+   Create the GitHub Release from that tag and publish the matching changelog
+   section as release notes. Do not upload redundant compiled assets.
 
-The checked-in 1.0.0 candidate has passed the required CI matrix. Keep tag
-creation and the private GitHub release as a separate maintainer step; any code
-or release metadata change after that CI run must pass the matrix again first.
+The stable `v1.0.0` tag and GitHub Release have been published. Any code or
+release metadata change after a release must pass the full CI matrix before
+publishing another tag.

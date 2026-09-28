@@ -28,7 +28,7 @@ port and fixtures from `../bend2-vscode/packages/language-server/src/officialFor
 
 Keep the plugin version in `lua/bend2/version.lua`. A stable version must have
 the same version heading in `CHANGELOG.md`; the unit suite checks this metadata.
-See [RELEASING.md](RELEASING.md) for the private v1 release gate.
+See [RELEASING.md](RELEASING.md) for the v1 release gate.
 
 ## Commit policy
 

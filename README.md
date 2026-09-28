@@ -5,15 +5,12 @@
 Native Lua editing support and compiler tools for [Bend 2](https://github.com/HigherOrderCO/Bend).
 
 [![CI](https://github.com/nuxyel/bend2-nvim/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nuxyel/bend2-nvim/actions/workflows/ci.yml)
+![Release](https://img.shields.io/github/v/release/nuxyel/bend2-nvim)
 ![Neovim 0.11+](https://img.shields.io/badge/Neovim-0.11%2B-57A143?logo=neovim&logoColor=white)
 ![Bend 2.0.28+](https://img.shields.io/badge/Bend-2.0.28%2B-805AD5)
-![Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue)
-![Private preview](https://img.shields.io/badge/repository-private%20preview-lightgrey)
+![Apache 2.0](https://img.shields.io/github/license/nuxyel/bend2-nvim)
 
 </div>
-
-> **Private preview:** this repository is private for now. Installation requires
-> GitHub access and Git credentials configured for HTTPS or SSH.
 
 ## What it does
 
@@ -43,7 +40,7 @@ Bend2.nvim is installed directly from its Git repository; no separate package re
 - [Built-in `vim.pack`](docs/INSTALLATION.md#neovim-vimpack), on Neovim 0.12 and newer.
 - [Native package layout](docs/INSTALLATION.md#native-package-layout), including Neovim 0.11 without a plugin manager.
 
-Stable versions use SemVer Git tags and GitHub Releases. The current v1 release remains private along with this repository.
+Stable versions use SemVer Git tags and GitHub Releases. The [v1.0.0 release](https://github.com/nuxyel/bend2-nvim/releases/tag/v1.0.0) is available now.
 
 ## Configure
 

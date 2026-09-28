@@ -5,10 +5,9 @@ package or LuaRocks release: the plugin is pure Lua and its plugin managers
 install the tagged Git source directly. Stable releases use SemVer tags such
 as `v1.0.0`.
 
-The repository is private during the initial release. You need Git access to
-`nuxyel/bend2-nvim` and credentials already configured for your chosen Git
-transport. After the repository becomes public, the same specifications work
-without private-repository credentials.
+The repository and v1.0.0 release are public. Plugin managers clone the tagged
+source directly from GitHub; use HTTPS by default or switch to SSH if that is
+your preferred Git transport.
 
 ## lazy.nvim
 
@@ -24,8 +23,8 @@ Works with the supported Neovim 0.11 and 0.12 versions:
 }
 ```
 
-If your private Git setup uses SSH rather than HTTPS, set the plugin's `url`
-to `git@github.com:nuxyel/bend2-nvim.git`.
+If you prefer SSH rather than HTTPS, set the plugin's `url` to
+`git@github.com:nuxyel/bend2-nvim.git`.
 
 ## Neovim `vim.pack`
 
@@ -44,8 +43,7 @@ vim.pack.add({
 require("bend2").setup()
 ```
 
-Use an SSH `src` if that is how your Git credentials are configured for the
-private repository.
+Use an SSH `src` if that is your preferred Git transport.
 
 ## Native package layout
 
