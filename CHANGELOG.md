@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added asynchronous compiler-derived Bend Base completion with workspace cache and static fallback.
+- Promoted the compiler dogfood project into a user-facing proof workflow example.
+- Documented Git-based installation through lazy.nvim, vim.pack, and Neovim's native package layout.
+- Added public-ready contribution, security, issue, and pull request guidance.
+
 ## 1.0.0 - 2026-09-28
 
 - Native Bend filetype, syntax, indentation, snippets and upstream-aligned formatter.
