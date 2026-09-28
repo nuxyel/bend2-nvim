@@ -1,6 +1,6 @@
 vim.opt.rtp:prepend(".")
 
-local fixture = vim.fn.fnamemodify(vim.fs.normalize("tests/dogfood/proof-project"), ":p")
+local fixture = vim.fn.fnamemodify(vim.fs.normalize("examples/proof-workflow"), ":p")
 local compiler = vim.env.BEND2_BIN or "bend"
 require("bend2").setup({ cmd = compiler, validation = "parser" })
 local toolchain = require("bend2.toolchain")
