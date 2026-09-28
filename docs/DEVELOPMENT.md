@@ -10,7 +10,7 @@
 
 ```sh
 nvim --headless -u NONE -l tests/run.lua
-nvim --headless -u NONE -l tests/dogfood.lua
+BEND2_BIN=/path/to/bend BEND_DOGFOOD_VERSION=2.0.28 nvim --headless -u NONE -l tests/dogfood.lua
 ```
 
 Tests run inside Neovim and do not require Node or third-party Lua packages.

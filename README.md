@@ -54,7 +54,7 @@ require("bend2").setup({
 ```
 
 See [docs/SUPPORT.md](docs/SUPPORT.md), [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md),
-and [CHANGELOG.md](CHANGELOG.md).
+[docs/DIFFERENTIAL.md](docs/DIFFERENTIAL.md), and [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

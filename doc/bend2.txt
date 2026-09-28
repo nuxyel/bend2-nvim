@@ -1,0 +1,112 @@
+*bend2.txt* Bend 2 support for Neovim
+
+=============================================================================
+CONTENTS                                                         *bend2-contents*
+
+  1. Introduction ............................... |bend2-introduction|
+  2. Installation ................................ |bend2-installation|
+  3. Configuration ............................... |bend2-configuration|
+  4. Commands .................................... |bend2-commands|
+  5. Compatibility and limitations .............. |bend2-compatibility|
+
+=============================================================================
+1. INTRODUCTION                                               *bend2-introduction*
+
+Bend 2 support is implemented as a native Lua plugin. It does not start a
+separate language server or require Node.js, nvim-lspconfig, Telescope, or a
+completion plugin. The Bend compiler is needed for compiler-backed commands.
+
+Parser-based symbols and diagnostics are approximate and remain useful while
+the compiler is unavailable. Compiler checks are the source of truth.
+
+=============================================================================
+2. INSTALLATION                                                 *bend2-installation*
+
+Install the private Git repository with your plugin manager, then add this to
+your config:
+
+    require("bend2").setup()
+
+The plugin detects files ending in .bend. No default key mappings are created.
+Use |:Bend2Help| to show the command groups.
+
+=============================================================================
+3. CONFIGURATION                                               *bend2-configuration*
+
+    require("bend2").setup({
+      cmd = "bend",
+      cmd_args = {},
+      root_markers = { ".git" },
+      validation = "on_save",
+      diagnostics_mode = "auto",
+      auto_import = false,
+      formatter = true,
+    })
+
+Options:
+
+cmd             Compiler executable, or an argv list whose first item is the
+                executable. Default: "bend".
+cmd_args        Arguments placed before compiler subcommands. Default: {}.
+root_markers    Markers used to find the workspace root. Default: { ".git" }.
+root_dir        Explicit root path or function(buffer) returning a path.
+validation      "parser", "on_save", "on_type", or "off". Default: "on_save".
+diagnostics_mode "auto", "text", or "json". Default: "auto".
+auto_import     Add a local import after selecting a completion item. Default: false.
+formatter       Enable |:Bend2Format|. Default: true.
+
+=============================================================================
+4. COMMANDS                                                       *bend2-commands*
+
+Editing:
+  :Bend2Format             Format the current buffer.
+  :Bend2Snippet            Insert a function, law, match, or parallel template.
+  :Bend2Definition         Go to a local definition.
+  :Bend2TypeDefinition     Go to a local type definition.
+  :Bend2References         List references in the quickfix window.
+  :Bend2Rename {name}      Rename a local symbol.
+  :Bend2Hover              Show the declaration under the cursor.
+  :Bend2Signature          Show a function declaration.
+  :Bend2CallHierarchy      Show incoming or outgoing call references.
+  :Bend2OpenImport         Open a local import.
+  :Bend2Symbols            List workspace symbols.
+
+Compiler:
+  :Bend2Check              Check the current file without running main().
+  :Bend2CheckWorkspace     Check workspace .bend files.
+  :Bend2Build              Build the current file.
+  :Bend2Run                Select a backend and run the current file.
+  :Bend2RunProjectGate     Run scripts/check.sh when present.
+  :Bend2RunSabotage        Run scripts/sabotagem.sh when present.
+  :Bend2ProbeBackend       Probe JavaScript, native, or GPU support.
+  :Bend2CompareBackends    Compare selected backend output.
+  :Bend2CompareProjectBackends Use .bend2/differential.json.
+  :Bend2Benchmark          Run repeated measurements and save JSON metadata.
+  :Bend2Base [name]        Show a Bend base definition.
+  :Bend2Version            Show compiler version and support status.
+  :Bend2Environment        Show the compiler execution environment.
+  :Bend2Support            Copy a source-free support report.
+  :Bend2Cancel             Cancel active Bend commands.
+
+Proofs:
+  :Bend2Proofs             Open the law and proof explorer.
+  :Bend2OpenProof          Open the selected law's proof.
+  :Bend2ProofDetails       Show proof status and dependencies.
+  :Bend2ProofGoal          Jump to an open proof goal.
+  :Bend2CheckProof         Check the selected PROOF.bend.
+  :Bend2ReviewLawChanges   Show a read-only Git diff for LAWS.bend.
+
+=============================================================================
+5. COMPATIBILITY AND LIMITATIONS                              *bend2-compatibility*
+
+Requires Neovim 0.11 or newer. Compiler-backed tooling supports Bend 2.0.28 or
+newer in the 2.x line. Syntax, formatting and parser navigation do not require
+the compiler. Native and GPU backends depend on the compiler and host toolchain.
+
+Semantic results come from a tolerant source parser until Bend publishes stable
+AST and source-span APIs. Review inferred results before relying on them.
+
+See docs/SUPPORT.md and docs/DIFFERENTIAL.md in the repository for support and
+report details.
+
+ vim:tw=78:ts=8:noet:ft=help:norl:
