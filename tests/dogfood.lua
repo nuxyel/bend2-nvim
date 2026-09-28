@@ -26,8 +26,38 @@ assert(proof_result.code == 0, "Bend proof dogfood failed: " .. (proof_result.st
 local status = require("bend2.proof").status(table.concat(vim.fn.readfile(fixture .. "/PROOF.bend"), "\n"), "adding_zero_preserves_value", "passed", true)
 assert(status == "proved", "compiler-checked law should be marked proved")
 
+local run_file = fixture .. "/run.bend"
+local function await_result(label, start)
+  local result
+  start(function(value) result = value end)
+  assert(vim.wait(120000, function() return result ~= nil end, 10), label .. " timed out")
+  return result
+end
+local javascript = await_result("JavaScript backend run", function(done)
+  toolchain.run_profile(run_file, root, "javascript", done)
+end)
+assert(javascript.code == 0 and javascript.stdout:find("Bend2 Neovim dogfood", 1, true), "JavaScript backend should run the dogfood program")
+local native = await_result("native backend run", function(done)
+  toolchain.run_profile(run_file, root, "native", done)
+end)
+assert(native.code == 0 and native.stdout == javascript.stdout, "native and JavaScript output should match")
+local comparison = await_result("backend comparison", function(done)
+  toolchain.compare(run_file, root, { "javascript", "native" }, done)
+end)
+assert(comparison.comparable and comparison.outputsMatch, "backend comparison should report matching runnable output")
+local probe = await_result("native backend probe", function(done)
+  toolchain.probe(run_file, root, "native", done)
+end)
+assert(probe.status == "ready", "native backend probe should compile without executing the program")
+local benchmark = await_result("native benchmark", function(done)
+  toolchain.benchmark(run_file, root, 1, done, { threads = 1, gpu = "off", warmup = true })
+end)
+assert(benchmark.ok and benchmark.outputs_match and #benchmark.samples_ms == 1, "native benchmark should discard warm-up and keep stable output")
+
 vim.cmd.edit(vim.fn.fnameescape(fixture .. "/main.bend"))
-require("bend2.proof").open_explorer()
+local proof = require("bend2.proof")
+assert(#require("bend2.workspace").proof_files(root) == 1, "workspace checks should discover proof suites, not every source module")
+proof.open_explorer()
 local explorer = vim.fn.bufnr("Bend2Proofs")
 assert(explorer > 0, "Proof Explorer should open")
 assert(vim.wait(120000, function()
@@ -35,5 +65,8 @@ assert(vim.wait(120000, function()
   for _, line in ipairs(lines) do if line:find("proved", 1, true) then return true end end
   return false
 end, 10), "Proof Explorer should reflect compiler-verified status")
+proof.refresh_explorer()
+assert(vim.fn.bufnr("Bend2Proofs") == explorer, "refresh should reuse the existing Proof Explorer buffer")
+assert(#vim.fn.win_findbuf(explorer) == 1, "refresh should not create duplicate explorer windows")
 
 print("Bend2 Neovim dogfood passed with Bend " .. tostring(info.version))

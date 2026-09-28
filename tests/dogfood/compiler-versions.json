@@ -1,10 +1,12 @@
 {
   "minimum": {
     "version": "2.0.28",
-    "linuxX64Sha256": "22bb6d5f6bce8ae2c5b340371fedddcbd90edc07a48b6e2b351a944c4558a3eb"
+    "linuxX64Sha256": "22bb6d5f6bce8ae2c5b340371fedddcbd90edc07a48b6e2b351a944c4558a3eb",
+    "darwinArm64Sha256": "b7f6cece79523ff1bb66a2754073f607683015982028111eee2149114dbdb847"
   },
   "latest": {
     "version": "2.0.32",
-    "linuxX64Sha256": "5c365ddb12954d0933cef751802e0f7d9875f842edcb80f9661f89cd1a9ff7b6"
+    "linuxX64Sha256": "5c365ddb12954d0933cef751802e0f7d9875f842edcb80f9661f89cd1a9ff7b6",
+    "darwinArm64Sha256": "d7debc002f59264f648dc94e45c2a9fab23e4b1ee0a390bf2acd8b1673e0cf55"
   }
 }
