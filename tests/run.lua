@@ -20,7 +20,7 @@ end
 local dogfood_matrix = ci_workflow:match("  dogfood:(.*)") or ""
 local dogfood_entries = 0
 for _ in dogfood_matrix:gmatch("%- os:") do dogfood_entries = dogfood_entries + 1 end
-assert(dogfood_entries == 8 and dogfood_matrix:find('nvim: "0.11.7"', 1, true) and dogfood_matrix:find('nvim: "0.12.5"', 1, true), "compiler dogfood must cover both supported Neovim versions on Linux and macOS")
+assert(dogfood_entries == 8 and dogfood_matrix:find('nvim: "0.11.7"', 1, true) and dogfood_matrix:find('nvim: "0.12.5"', 1, true) and dogfood_matrix:find("ubuntu-24.04", 1, true) and dogfood_matrix:find("macos-14", 1, true), "compiler dogfood must cover both supported Neovim versions on pinned Linux and macOS runners")
 local parsed = parser.parse([[
 import ./math as Math
 type Maybe {

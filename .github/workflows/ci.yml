@@ -14,10 +14,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             nvim: "0.11.7"
             asset: nvim-linux-x86_64
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             nvim: "0.12.5"
             asset: nvim-linux-x86_64
           - os: macos-14
@@ -28,7 +28,7 @@ jobs:
             asset: nvim-macos-arm64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Neovim
         env:
           NVIM_VERSION: ${{ matrix.nvim }}
@@ -47,22 +47,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             nvim: "0.11.7"
             bend: "2.0.28"
             archive: bend-2.0.28-linux-x64.tar.gz
             sha256: 22bb6d5f6bce8ae2c5b340371fedddcbd90edc07a48b6e2b351a944c4558a3eb
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             nvim: "0.11.7"
             bend: "2.0.32"
             archive: bend-2.0.32-linux-x64.tar.gz
             sha256: 5c365ddb12954d0933cef751802e0f7d9875f842edcb80f9661f89cd1a9ff7b6
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             nvim: "0.12.5"
             bend: "2.0.28"
             archive: bend-2.0.28-linux-x64.tar.gz
             sha256: 22bb6d5f6bce8ae2c5b340371fedddcbd90edc07a48b6e2b351a944c4558a3eb
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             nvim: "0.12.5"
             bend: "2.0.32"
             archive: bend-2.0.32-linux-x64.tar.gz
@@ -89,7 +89,7 @@ jobs:
             sha256: d7debc002f59264f648dc94e45c2a9fab23e4b1ee0a390bf2acd8b1673e0cf55
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Neovim
         env:
           NVIM_VERSION: ${{ matrix.nvim }}
