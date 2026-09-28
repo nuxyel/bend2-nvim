@@ -39,7 +39,7 @@ Editing features remain available without Bend installed. Compiler-backed featur
 
 Bend2.nvim is installed directly from its Git repository; no separate package registry or LuaRocks package is needed. Choose your plugin manager in the [installation guide](docs/INSTALLATION.md):
 
-- [lazy.nvim](docs/INSTALLATION.md#lazy-nvim), supported on Neovim 0.11 and newer.
+- [lazy.nvim](docs/INSTALLATION.md#lazynvim), supported on Neovim 0.11 and newer.
 - [Built-in `vim.pack`](docs/INSTALLATION.md#neovim-vimpack), on Neovim 0.12 and newer.
 - [Native package layout](docs/INSTALLATION.md#native-package-layout), including Neovim 0.11 without a plugin manager.
 
