@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/nuxyel/bend2-nvim/security/advisories/new
+    about: Report security issues privately; do not use a public issue.
+  - name: Support documentation
+    url: https://github.com/nuxyel/bend2-nvim/blob/main/docs/SUPPORT.md
+    about: Check troubleshooting and compatibility notes.

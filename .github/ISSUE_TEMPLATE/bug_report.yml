@@ -1,0 +1,62 @@
+name: Bug report
+description: Report a reproducible problem with Bend2.nvim.
+title: "bug: "
+labels: [bug]
+body:
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Bend2.nvim version
+      description: Include the release tag or Git commit.
+      placeholder: v1.0.0
+    validations:
+      required: true
+  - type: input
+    id: neovim-version
+    attributes:
+      label: Neovim version
+      placeholder: nvim --version
+    validations:
+      required: true
+  - type: input
+    id: bend-version
+    attributes:
+      label: Bend version
+      description: Enter "not installed" if the compiler is unavailable.
+      placeholder: Bend 2.0.32
+    validations:
+      required: true
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows under WSL
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include a minimal Bend example when possible. Remove private source and secrets.
+      placeholder: "1. Open ...\n2. Run ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+      placeholder: Describe what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Remove credentials, private source code, and sensitive file paths before posting.
+      render: text
+    validations:
+      required: false
