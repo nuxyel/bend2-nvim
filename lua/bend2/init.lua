@@ -34,11 +34,15 @@ function M.setup(opts)
     vim.bo[event.buf].omnifunc = "v:lua.require'bend2.editor'.complete"
     vim.bo[event.buf].formatexpr = "v:lua.require'bend2.editor'.format_expr"
     vim.bo[event.buf].foldmethod = "indent"
-    editor.validate_buffer(event.buf)
+    if M.options.validation == "off" then vim.diagnostic.reset(M.namespace, event.buf)
+    elseif M.options.validation == "on_type" then editor.validate_buffer(event.buf)
+    else editor.parse_buffer(event.buf) end
   end })
   vim.api.nvim_create_autocmd("CompleteDone", { group = group, pattern = "*.bend", callback = editor.complete_done })
   vim.api.nvim_create_autocmd({ "BufWritePost", "TextChanged", "TextChangedI" }, { group = group, pattern = "*.bend", callback = function(event)
     if M.options.validation == "off" then vim.diagnostic.reset(M.namespace, event.buf); return end
+    local current_path = vim.api.nvim_buf_get_name(event.buf)
+    require("bend2.toolchain").cancel_check(current_path)
     if event.event == "BufWritePost" then editor.validate_buffer(event.buf, true)
     elseif M.options.validation == "on_type" then
       local tick = vim.api.nvim_buf_get_changedtick(event.buf)
@@ -51,7 +55,7 @@ function M.setup(opts)
   command("Bend2Help", function()
     local lines = {
       "Bend 2 for Neovim", "", "Editing: :Bend2Format :Bend2Snippet :Bend2Hover :Bend2Signature :Bend2Definition :Bend2TypeDefinition :Bend2OpenImport :Bend2References :Bend2Rename :Bend2CallHierarchy :Bend2Symbols",
-      "Compiler: :Bend2Check :Bend2CheckWorkspace :Bend2Build :Bend2Run :Bend2Base :Bend2Version :Bend2Environment :Bend2Support",
+      "Compiler: :Bend2Check :Bend2CheckWorkspace :Bend2Build :Bend2Run :Bend2Cancel :Bend2Base :Bend2Version :Bend2Environment :Bend2Support",
       "Proofs: :Bend2Proofs :Bend2OpenProof :Bend2ProofDetails :Bend2ProofGoal :Bend2CheckProof :Bend2ReviewLawChanges",
       "Backends: :Bend2ProbeBackend :Bend2CompareBackends :Bend2CompareProjectBackends :Bend2Benchmark",
       "No default key mappings are installed. See :help bend2 for configuration and support details.",
@@ -85,6 +89,7 @@ function M.setup(opts)
   command("Bend2Benchmark", editor.benchmark, "Benchmark the current Bend 2 file")
   command("Bend2Environment", editor.environment, "Show compiler execution environment")
   command("Bend2Support", editor.support, "Copy source-free Bend 2 support details")
+  command("Bend2Cancel", function() require("bend2.toolchain").cancel_all(); vim.notify("Cancelled active Bend 2 commands.", vim.log.levels.INFO) end, "Cancel active Bend 2 commands")
   local proof = require("bend2.proof")
   command("Bend2Proofs", proof.open_explorer, "Open Bend 2 Proof Explorer")
   command("Bend2OpenProof", proof.open_proof, "Open the selected law proof")
@@ -92,6 +97,11 @@ function M.setup(opts)
   command("Bend2ProofGoal", proof.goal_command, "Go to an open proof goal")
   command("Bend2CheckProof", proof.check_proof, "Check the selected proof file")
   command("Bend2ReviewLawChanges", proof.review_changes, "Review law changes without modifying them")
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].filetype == "bend" then
+      if M.options.validation == "on_type" then editor.validate_buffer(buf) else editor.parse_buffer(buf) end
+    end
+  end
   return M
 end
 

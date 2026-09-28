@@ -89,7 +89,7 @@ function M.references(path, row, col, root)
       local code = parser.code_only(line)
       for start, word in code:gmatch("()([A-Za-z_][A-Za-z0-9_]*)") do
         if word == short or word == target.symbol.name then
-          results[#results + 1] = { path = candidate.path, row = row_idx - 1, col = start - 1, text = line }
+          results[#results + 1] = { path = candidate.path, row = row_idx - 1, col = start - 1, text = line, name = word }
         end
       end
     end

@@ -122,8 +122,9 @@ end
 function M.identifier_at(source, row, col)
   local line = vim.split(source, "\n", { plain = true })[row + 1] or ""
   local code = M.code_only(line)
-  for start, word in code:gmatch("()([A-Za-z_][A-Za-z0-9_]*)") do
-    if col >= start - 1 and col <= start - 1 + #word then return word, start - 1 end
+  for start, word in code:gmatch("()([A-Za-z_][A-Za-z0-9_.]*)") do
+    word = word:gsub("%.$", "")
+    if word ~= "" and col >= start - 1 and col <= start - 1 + #word then return word, start - 1 end
   end
 end
 

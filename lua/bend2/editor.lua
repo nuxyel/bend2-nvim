@@ -50,7 +50,7 @@ local function publish_compiler_result(buf, path, root, result)
     local diagnostic_path = diagnostic.file
     if diagnostic_path and not vim.fs.is_absolute(diagnostic_path) then diagnostic_path = vim.fs.joinpath(root, diagnostic_path) end
     if diagnostic_path and vim.fs.normalize(diagnostic_path) == vim.fs.normalize(path) then
-      items[#items + 1] = { lnum = diagnostic.line, col = diagnostic.col, message = diagnostic.message, severity = diagnostic.severity == "warning" and vim.diagnostic.severity.WARN or vim.diagnostic.severity.ERROR, source = "Bend 2 compiler" }
+      items[#items + 1] = { lnum = diagnostic.line, col = diagnostic.col, end_lnum = diagnostic.end_line, end_col = diagnostic.end_col, message = diagnostic.message, severity = diagnostic.severity == "warning" and vim.diagnostic.severity.WARN or diagnostic.severity == "info" and vim.diagnostic.severity.INFO or vim.diagnostic.severity.ERROR, source = "Bend 2 compiler" }
     end
   end
   vim.diagnostic.set(require("bend2").namespace, buf, items, {})
@@ -85,8 +85,9 @@ function M.check_current()
   local buf, path = cursor_context()
   if path == "" then vim.notify("Save the Bend 2 buffer before checking it.", vim.log.levels.WARN); return end
   local root = workspace.root(buf, require("bend2").options)
+  local changedtick = vim.api.nvim_buf_get_changedtick(buf)
   require("bend2.toolchain").check(path, root, function(result)
-    if vim.api.nvim_buf_is_valid(buf) then publish_compiler_result(buf, path, root, result) end
+    if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_get_changedtick(buf) == changedtick then publish_compiler_result(buf, path, root, result) end
     M.output("Bend 2 check: " .. vim.fn.fnamemodify(path, ":."), result)
   end)
 end
@@ -191,13 +192,34 @@ function M.compare_backends()
       if profile ~= "javascript" and profile ~= "native" and profile ~= "gpu" then vim.notify("Unknown backend: " .. profile, vim.log.levels.ERROR); return end
       profiles[#profiles + 1] = profile
     end
-    require("bend2.toolchain").compare(path, workspace.root(buf, require("bend2").options), profiles, function(result)
-      local lines = {}
-      for _, item in ipairs(result.runs or {}) do lines[#lines + 1] = string.format("%s: exit=%s", item.profile, tostring(item.result.code)) end
-      lines[#lines + 1] = "Comparable: " .. tostring(result.comparable)
-      lines[#lines + 1] = "Outputs match: " .. tostring(result.outputsMatch)
-      if result.error then lines[#lines + 1] = result.error end
-      M.output("Bend 2 backend comparison", { code = result.comparable and result.outputsMatch and 0 or 1, stdout = table.concat(lines, "\n"), stderr = result.error or "" })
+    local has_native, has_gpu = false, false
+    for _, profile in ipairs(profiles) do has_native = has_native or profile == "native" or profile == "gpu"; has_gpu = has_gpu or profile == "gpu" end
+    local options = {}
+    local function compare()
+      require("bend2.toolchain").compare(path, workspace.root(buf, require("bend2").options), profiles, function(result)
+        local lines = {}
+        for _, item in ipairs(result.runs or {}) do lines[#lines + 1] = string.format("%s: exit=%s", item.profile, tostring(item.result.code)) end
+        lines[#lines + 1] = "Comparable: " .. tostring(result.comparable)
+        lines[#lines + 1] = "Outputs match: " .. tostring(result.outputsMatch)
+        if result.error then lines[#lines + 1] = result.error end
+        M.output("Bend 2 backend comparison", { code = result.comparable and result.outputsMatch and 0 or 1, stdout = table.concat(lines, "\n"), stderr = result.error or "" })
+      end, options)
+    end
+    local function ask_gpu_memory()
+      if not has_gpu then compare(); return end
+      vim.ui.input({ prompt = "GPU memory (on or limit such as 4GB)", default = "on" }, function(memory)
+        if not memory then return end
+        if not memory:match("^(on)$") and not memory:match("^%d+%.?%d*[KMGTP]B$") then vim.notify("Use 'on' or a GPU memory limit such as 4GB.", vim.log.levels.ERROR); return end
+        options.gpu_memory = memory
+        compare()
+      end)
+    end
+    if not has_native then compare(); return end
+    vim.ui.input({ prompt = "Optional positive thread count (empty for runtime default)" }, function(threads)
+      if threads == nil then return end
+      if threads ~= "" and (not threads:match("^%d+$") or tonumber(threads) < 1) then vim.notify("Threads must be a positive integer.", vim.log.levels.ERROR); return end
+      options.threads = threads ~= "" and tonumber(threads) or nil
+      ask_gpu_memory()
     end)
   end)
 end
@@ -215,27 +237,47 @@ end
 function M.benchmark()
   local buf, path = cursor_context()
   if path == "" then vim.notify("Save the Bend 2 buffer before benchmarking it.", vim.log.levels.WARN); return end
-  vim.ui.input({ prompt = "Benchmark repetitions", default = "3" }, function(value)
-    if not value then return end
-    vim.ui.input({ prompt = "Thread count (empty for runtime default)", default = "1" }, function(threads)
-      if threads == nil or (threads ~= "" and (not threads:match("^%d+$") or tonumber(threads) < 1)) then return end
+  vim.ui.input({ prompt = "Thread counts (comma-separated)", default = "1,2,4" }, function(thread_text)
+    if not thread_text then return end
+    local threads, seen = {}, {}
+    for part in thread_text:gmatch("[^,]+") do
+      if not part:match("^%d+$") or tonumber(part) < 1 then vim.notify("Enter positive thread counts separated by commas.", vim.log.levels.ERROR); return end
+      if not seen[tonumber(part)] then threads[#threads + 1] = tonumber(part); seen[tonumber(part)] = true end
+    end
+    if #threads == 0 then vim.notify("Enter at least one thread count.", vim.log.levels.ERROR); return end
+    vim.ui.input({ prompt = "Measured runs per configuration (warm-up is discarded)", default = "3" }, function(run_text)
+      if not run_text or not run_text:match("^%d+$") or tonumber(run_text) < 1 then return end
       vim.ui.select({ "off", "on", "4GB" }, { prompt = "Bend 2 GPU mode" }, function(gpu)
         if not gpu then return end
-        require("bend2.toolchain").benchmark(path, workspace.root(buf, require("bend2").options), value, function(result)
-      local lines = { "ok: " .. tostring(result.ok) }
-      if result.ok then
-        lines[#lines + 1] = "median_ms: " .. tostring(result.median_ms)
-        lines[#lines + 1] = "min_ms: " .. tostring(result.min_ms)
-        lines[#lines + 1] = "max_ms: " .. tostring(result.max_ms)
-        lines[#lines + 1] = "samples_ms: " .. vim.inspect(result.samples_ms)
-        local report_dir = vim.fs.joinpath(workspace.root(buf, require("bend2").options), ".bend", "benchmarks")
-        vim.fn.mkdir(report_dir, "p")
-        local report = vim.fs.joinpath(report_dir, "bend2-" .. os.date("%Y%m%d-%H%M%S") .. ".json")
-        vim.fn.writefile({ vim.json.encode(result) }, report)
-        lines[#lines + 1] = "report: " .. report
-      elseif result.error then lines[#lines + 1] = result.error end
-      M.output("Bend 2 benchmark", { code = result.ok and 0 or 1, stdout = table.concat(lines, "\n"), stderr = result.error or "" })
-        end, { threads = threads ~= "" and tonumber(threads) or nil, gpu = gpu, warmup = true })
+        local results, index, root = {}, 1, workspace.root(buf, require("bend2").options)
+        local function next_thread()
+          local count = threads[index]
+          if not count then
+            local report_dir = vim.fs.joinpath(root, ".bend", "benchmarks")
+            vim.fn.mkdir(report_dir, "p")
+            local report = vim.fs.joinpath(report_dir, "bend2-" .. os.date("%Y%m%d-%H%M%S") .. ".json")
+            local record = { schemaVersion = 1, generatedAt = os.date("!%Y-%m-%dT%H:%M:%SZ"), file = vim.fs.relpath(root, path), requestedThreads = threads, gpu = gpu, runs = tonumber(run_text), results = results }
+            vim.fn.writefile({ vim.json.encode(record) }, report)
+            local lines = { "Compiler: " .. tostring(results[1] and results[1].compiler and results[1].compiler.version or "unknown"), "GPU: " .. gpu, "Warm-up: discarded", "Runs: " .. run_text }
+            for _, result in ipairs(results) do
+              if result.ok then
+                lines[#lines + 1] = string.format("threads=%s: median=%.3fms, min=%.3fms, max=%.3fms, output stable=%s", tostring(result.threads or "default"), result.median_ms, result.min_ms, result.max_ms, tostring(result.outputs_match))
+                lines[#lines + 1] = "  samples_ms: " .. vim.inspect(result.samples_ms)
+              else lines[#lines + 1] = "threads=" .. tostring(result.threads or count) .. ": failed: " .. tostring(result.error) end
+            end
+            lines[#lines + 1] = "JSON report: " .. report
+            local successful = #results > 0
+            for _, result in ipairs(results) do successful = successful and result.ok and result.outputs_match end
+            M.output("Bend 2 benchmark", { code = successful and 0 or 1, stdout = table.concat(lines, "\n"), stderr = successful and "" or "One or more benchmark configurations failed or produced unstable output." })
+            return
+          end
+          require("bend2.toolchain").benchmark(path, root, run_text, function(result)
+            results[#results + 1] = result
+            index = index + 1
+            next_thread()
+          end, { threads = count, gpu = gpu, warmup = true })
+        end
+        next_thread()
       end)
     end)
   end)
@@ -255,8 +297,8 @@ function M.support()
   require("bend2.toolchain").discover(root, function(info)
     local uname = vim.uv.os_uname()
     local report = table.concat({ "Bend2.nvim: 0.1.0", "Neovim: " .. vim.version().major .. "." .. vim.version().minor .. "." .. vim.version().patch, "Host: " .. uname.sysname .. " " .. uname.release .. " " .. uname.machine, "Workspace: " .. root, "Compiler: " .. tostring(info.version or "unavailable"), "Compiler compatibility: " .. info.compatibility, "Compiler available: " .. tostring(info.available) }, "\n")
-    vim.fn.setreg("+", report)
-    M.output("Bend 2 support report (copied to clipboard)", { code = 0, stdout = report })
+    local copied = pcall(vim.fn.setreg, "+", report)
+    M.output(copied and "Bend 2 support report (copied to clipboard)" or "Bend 2 support report", { code = 0, stdout = report, stderr = copied and "" or "Clipboard unavailable; copy the report from this buffer." })
   end)
 end
 
@@ -359,7 +401,7 @@ function M.rename(new_name)
     vim.fn.bufload(target_buf)
     table.sort(items, function(a, b) if a.row == b.row then return a.col > b.col end return a.row > b.row end)
     for _, item in ipairs(items) do
-      vim.api.nvim_buf_set_text(target_buf, item.row, item.col, item.row, item.col + #name, { new_name })
+      vim.api.nvim_buf_set_text(target_buf, item.row, item.col, item.row, item.col + #item.name, { new_name })
     end
   end
 end
@@ -380,6 +422,7 @@ function M.hover()
 end
 
 function M.format()
+  if not require("bend2").options.formatter then vim.notify("Bend 2 formatting is disabled in configuration.", vim.log.levels.INFO); return end
   local buf = vim.api.nvim_get_current_buf()
   local source = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
   local formatted = require("bend2.formatter").format(source, { tabSize = vim.bo[buf].shiftwidth, insertSpaces = vim.bo[buf].expandtab })

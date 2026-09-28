@@ -22,9 +22,12 @@ end
 function M.goal(source, law_name)
   local body, first = M.body(source, law_name)
   if not body then return nil end
-  local offset = body:find("%?[%w_]+")
+  local masked_lines = {}
+  for line in (body .. "\n"):gmatch("(.-)\n") do masked_lines[#masked_lines + 1] = parser.code_only(line) end
+  local masked = table.concat(masked_lines, "\n")
+  local offset = masked:find("%?[%w_]+")
   if not offset then return nil end
-  local before = body:sub(1, offset - 1)
+  local before = masked:sub(1, offset - 1)
   local line = select(2, before:gsub("\n", ""))
   local last_newline = before:match(".*()\n") or 0
   return { token = body:match("%?[%w_]+", offset), line = first + line, character = #before - last_newline }
@@ -34,6 +37,9 @@ function M.dependencies(source, law_name)
   local body = M.body(source, law_name)
   if not body then return {} end
   local dependencies = {}
+  local lines = {}
+  for line in (body .. "\n"):gmatch("(.-)\n") do lines[#lines + 1] = parser.code_only(line) end
+  body = table.concat(lines, "\n")
   for name in body:gmatch("([A-Za-z_][A-Za-z0-9_%.]*)%s*%(") do
     if name ~= law_name and name ~= "if" and name ~= "for" and name ~= "match" and name ~= "case" and name ~= "def" and name ~= "law" then dependencies[name] = true end
   end
@@ -54,6 +60,9 @@ function M.status(source, law_name, compiler_status, compiler_available)
   if not source or source == "" then return "missing proof" end
   local body = M.body(source, law_name)
   if not body then return "missing proof" end
+  local lines = {}
+  for line in (body .. "\n"):gmatch("(.-)\n") do lines[#lines + 1] = parser.code_only(line) end
+  body = table.concat(lines, "\n")
   if compiler_status == "failed" then return "failed" end
   if body:match("@unsafe%f[%W]") then return "unsafe" end
   if body:match("%f[%w]foreign%f[%W]") then return "foreign" end
@@ -101,6 +110,7 @@ end
 function M.open_explorer()
   local root = workspace.root(vim.api.nvim_get_current_buf(), require("bend2").options)
   local entries = law_entries(root)
+  for _, entry in ipairs(entries) do entry.root = root end
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_name(buf, "Bend2Proofs")
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, display(entries))
@@ -112,14 +122,15 @@ function M.open_explorer()
   for _, entry in ipairs(entries) do
     if not checked[entry.proof_path] and vim.fn.filereadable(entry.proof_path) == 1 then
       checked[entry.proof_path] = true
-      local project_root = workspace.root(vim.api.nvim_get_current_buf(), require("bend2").options)
-      require("bend2.toolchain").check(entry.proof_path, project_root, function(result)
+      require("bend2.toolchain").check(entry.proof_path, root, function(result)
         if not result.compiler or not result.compiler.available or not vim.api.nvim_buf_is_valid(buf) then return end
         local compiler_status = result.code == 0 and "passed" or "failed"
         for _, law in ipairs(entries) do
           if law.proof_path == entry.proof_path then law.status = M.status(law.proof_source, law.name, compiler_status, true) end
         end
+        vim.bo[buf].modifiable = true
         vim.api.nvim_buf_set_lines(buf, 0, -1, false, display(entries))
+        vim.bo[buf].modifiable = false
         vim.b[buf].bend2_proof_entries = entries
       end)
     end
@@ -142,7 +153,7 @@ function M.current_entry()
   local path = vim.api.nvim_buf_get_name(buf)
   if not name or not path:match("LAWS%.bend$") then return nil end
   local proof = read(vim.fs.joinpath(vim.fs.dirname(path), "PROOF.bend"))
-  return { name = name, law_path = path, proof_path = vim.fs.joinpath(vim.fs.dirname(path), "PROOF.bend"), proof_source = proof, dependencies = M.dependencies(proof, name), status = M.status(proof, name) }
+  return { name = name, law_path = path, proof_path = vim.fs.joinpath(vim.fs.dirname(path), "PROOF.bend"), proof_source = proof, dependencies = M.dependencies(proof, name), status = M.status(proof, name), root = workspace.root(buf, require("bend2").options) }
 end
 
 function M.open_proof()
@@ -150,8 +161,10 @@ function M.open_proof()
   if not entry then vim.notify("Place the cursor on a law or proof explorer item.", vim.log.levels.WARN); return end
   if vim.fn.filereadable(entry.proof_path) == 0 then vim.notify("No PROOF.bend exists for this law.", vim.log.levels.INFO); return end
   vim.cmd.edit(vim.fn.fnameescape(entry.proof_path))
+  local _, body_line = M.body(entry.proof_source, entry.name)
   local goal = M.goal(entry.proof_source, entry.name)
-  if goal then vim.api.nvim_win_set_cursor(0, { goal.line + 1, goal.character }) end
+  if goal then vim.api.nvim_win_set_cursor(0, { goal.line + 1, goal.character })
+  elseif body_line then vim.api.nvim_win_set_cursor(0, { body_line + 1, 0 }) end
 end
 
 function M.details()
@@ -160,7 +173,7 @@ function M.details()
   local lines = { "Law: " .. entry.name, "Status: " .. entry.status, "Dependencies: " .. (#entry.dependencies > 0 and table.concat(entry.dependencies, ", ") or "none"), "", "Statement:", read(entry.law_path):match("[^\n]*law%s+" .. escaped(entry.name) .. "[^\n]*") or ("law " .. entry.name), "", "Proof:" }
   for line in entry.proof_source:gmatch("[^\n]+") do lines[#lines + 1] = line end
   if #entry.proof_source == 0 then lines[#lines + 1] = "No proof file or definition found." end
-  if #entry.unlisted > 0 then lines[#lines + 1] = "Unlisted unsafe/foreign dependencies: " .. table.concat(entry.unlisted, ", ") end
+  if #(entry.unlisted or {}) > 0 then lines[#lines + 1] = "Unlisted unsafe/foreign dependencies: " .. table.concat(entry.unlisted, ", ") end
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].buftype, vim.bo[buf].bufhidden, vim.bo[buf].modifiable = "nofile", "wipe", false
@@ -181,7 +194,7 @@ function M.check_proof()
   local entry = M.current_entry()
   if not entry then vim.notify("Place the cursor on a law or proof explorer item.", vim.log.levels.WARN); return end
   if vim.fn.filereadable(entry.proof_path) == 0 then vim.notify("No PROOF.bend exists for this law.", vim.log.levels.WARN); return end
-  local root = workspace.root(vim.api.nvim_get_current_buf(), require("bend2").options)
+  local root = entry.root or workspace.root(vim.api.nvim_get_current_buf(), require("bend2").options)
   require("bend2.toolchain").check(entry.proof_path, root, function(result)
     require("bend2.editor").output("Bend 2 proof check: " .. entry.name, result)
   end)
@@ -191,8 +204,9 @@ function M.review_changes()
   local entry = M.current_entry()
   local path = entry and entry.law_path or vim.api.nvim_buf_get_name(0)
   if not path:match("LAWS%.bend$") then vim.notify("Open a LAWS.bend file or select a law.", vim.log.levels.WARN); return end
-  local root = workspace.root(vim.api.nvim_get_current_buf(), require("bend2").options)
-  require("bend2.toolchain").run_binary("git", { "diff", "--", path }, root, function(result)
+  local root = entry and entry.root or workspace.root(vim.api.nvim_get_current_buf(), require("bend2").options)
+  local relative = vim.fs.relpath(root, path) or path
+  require("bend2.toolchain").run_binary("git", { "diff", "--", relative }, root, function(result)
     require("bend2.editor").output("Bend 2 law changes (review only)", result)
   end, 30000)
 end

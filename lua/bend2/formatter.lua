@@ -39,6 +39,19 @@ local function tokenize(code)
   return tokens
 end
 
+local prefix_context = { ["("]=true, ["{"]=true, ["["]=true, ["<"]=true, [","]=true, [":"]=true, ["="]=true, ["for"]=true, ["case"]=true, ["~"]=true }
+
+local function unary(tokens, index)
+  local token = tokens[index] and tokens[index].text
+  if not token or not ({ ["+"]=true, ["-"]=true, ["~"]=true, ["?"]=true, ["@"]=true, ["&"]=true, ["%"]=true })[token] then return false end
+  local previous, next_token = tokens[index - 1] and tokens[index - 1].text, tokens[index + 1]
+  if not next_token then return false end
+  local at_prefix = index == 1 or prefix_context[previous] or binary[previous]
+  if token == "~" or token == "%" then return not not at_prefix end
+  if token == "+" or token == "-" then return next_token.kind == "word" and not not at_prefix end
+  return (next_token.kind == "word" or next_token.kind == "number") and not not at_prefix
+end
+
 local function needs_space(tokens, i)
   local left, right = tokens[i - 1], tokens[i]
   if not left then return false end
@@ -46,12 +59,16 @@ local function needs_space(tokens, i)
   if right.text == ":" then return right.gap end
   if left.text == "(" or left.text == "[" or left.text == "{" then return false end
   if left.text == "," then return true end
+  if right.text == "!" and (left.kind == "word" or left.text:match("^[%)%]}>]$")) then return false end
+  if left.text == "!" and right.text == "(" then return false end
   if right.text == "(" or right.text == "[" then
     local suffix = (left.kind == "word" and not keywords[left.text]) or left.kind == "number" or left.kind == "literal" or left.text:match("^[%)%]}>]$")
     return not suffix
   end
   if right.text == "{" and ((left.kind == "word" and left.text ~= "return" and left.text ~= "case") or left.text == ">" or left.text == "}" or left.text == ">>") then return false end
   if left.text == "." or right.text == "." then return false end
+  if unary(tokens, i - 1) then return false end
+  if unary(tokens, i) then return not (left.text == "(" or left.text == "[" or left.text == "{" or left.text == "<") end
   if binary[left.text] or binary[right.text] then return true end
   if left.text == ":" then return true end
   return true
