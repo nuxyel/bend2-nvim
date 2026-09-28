@@ -35,4 +35,6 @@ See [RELEASING.md](RELEASING.md) for the private v1 release gate.
 Keep commits atomic and scoped to one subsystem. Run the applicable headless
 checks before committing, and do not mix unrelated fixes into a feature commit.
 Keep runtime changes, compiler compatibility, platform/CI changes and release
-documentation in separate commits.
+documentation in separate commits. Community-health files and issue templates
+also get focused commits apart from runtime changes. Repository labels are GitHub
+metadata and are configured separately from Git commits.
