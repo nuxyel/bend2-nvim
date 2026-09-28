@@ -1,0 +1,7 @@
+{
+  "name": "bend2-nvim",
+  "description": "Native Lua editing support and compiler tools for Bend 2.",
+  "engines": {
+    "nvim": ">=0.11.0"
+  }
+}

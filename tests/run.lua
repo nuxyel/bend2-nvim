@@ -4,6 +4,10 @@ local function eq(expected, actual, message)
   assert(vim.deep_equal(expected, actual), (message or "values differ") .. "\nexpected: " .. vim.inspect(expected) .. "\nactual: " .. vim.inspect(actual))
 end
 
+local package_manifest = vim.json.decode(table.concat(vim.fn.readfile("pkg.json"), "\n"))
+eq("bend2-nvim", package_manifest.name, "vim.pack manifest should identify the plugin")
+eq(">=0.11.0", package_manifest.engines.nvim, "vim.pack manifest should match the supported Neovim baseline")
+
 local parser = require("bend2.parser")
 local plugin_version = require("bend2.version")
 assert(plugin_version:match("^%d+%.%d+%.%d+%-dev$") or plugin_version:match("^%d+%.%d+%.%d+$"), "plugin version must be a development identifier or semantic release version")
