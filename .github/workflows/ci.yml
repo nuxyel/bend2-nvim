@@ -43,18 +43,42 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
+            nvim: "0.11.7"
             bend: "2.0.28"
             archive: bend-2.0.28-linux-x64.tar.gz
             sha256: 22bb6d5f6bce8ae2c5b340371fedddcbd90edc07a48b6e2b351a944c4558a3eb
           - os: ubuntu-latest
+            nvim: "0.11.7"
+            bend: "2.0.32"
+            archive: bend-2.0.32-linux-x64.tar.gz
+            sha256: 5c365ddb12954d0933cef751802e0f7d9875f842edcb80f9661f89cd1a9ff7b6
+          - os: ubuntu-latest
+            nvim: "0.12.5"
+            bend: "2.0.28"
+            archive: bend-2.0.28-linux-x64.tar.gz
+            sha256: 22bb6d5f6bce8ae2c5b340371fedddcbd90edc07a48b6e2b351a944c4558a3eb
+          - os: ubuntu-latest
+            nvim: "0.12.5"
             bend: "2.0.32"
             archive: bend-2.0.32-linux-x64.tar.gz
             sha256: 5c365ddb12954d0933cef751802e0f7d9875f842edcb80f9661f89cd1a9ff7b6
           - os: macos-14
+            nvim: "0.11.7"
             bend: "2.0.28"
             archive: bend-2.0.28-darwin-arm64.tar.gz
             sha256: b7f6cece79523ff1bb66a2754073f607683015982028111eee2149114dbdb847
           - os: macos-14
+            nvim: "0.11.7"
+            bend: "2.0.32"
+            archive: bend-2.0.32-darwin-arm64.tar.gz
+            sha256: d7debc002f59264f648dc94e45c2a9fab23e4b1ee0a390bf2acd8b1673e0cf55
+          - os: macos-14
+            nvim: "0.12.5"
+            bend: "2.0.28"
+            archive: bend-2.0.28-darwin-arm64.tar.gz
+            sha256: b7f6cece79523ff1bb66a2754073f607683015982028111eee2149114dbdb847
+          - os: macos-14
+            nvim: "0.12.5"
             bend: "2.0.32"
             archive: bend-2.0.32-darwin-arm64.tar.gz
             sha256: d7debc002f59264f648dc94e45c2a9fab23e4b1ee0a390bf2acd8b1673e0cf55
@@ -62,9 +86,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Neovim
+        env:
+          NVIM_VERSION: ${{ matrix.nvim }}
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then asset="nvim-macos-arm64"; else asset="nvim-linux-x86_64"; fi
-          curl -fsSLO "https://github.com/neovim/neovim/releases/download/v0.12.5/${asset}.tar.gz"
+          curl -fsSLO "https://github.com/neovim/neovim/releases/download/v${NVIM_VERSION}/${asset}.tar.gz"
           tar -xzf "${asset}.tar.gz"
           echo "$PWD/${asset}/bin" >> "$GITHUB_PATH"
       - name: Install checksum-verified Bend

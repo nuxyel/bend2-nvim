@@ -17,6 +17,10 @@ for _, pin in ipairs({ compiler_pins.minimum, compiler_pins.latest }) do
   assert(#pin.linuxX64Sha256 == 64 and #pin.darwinArm64Sha256 == 64, "compiler archive checksums must be SHA-256 values")
   assert(ci_workflow:find(pin.version, 1, true) and ci_workflow:find(pin.linuxX64Sha256, 1, true) and ci_workflow:find(pin.darwinArm64Sha256, 1, true), "CI compiler matrix must match the checked-in compatibility pins")
 end
+local dogfood_matrix = ci_workflow:match("  dogfood:(.*)") or ""
+local dogfood_entries = 0
+for _ in dogfood_matrix:gmatch("%- os:") do dogfood_entries = dogfood_entries + 1 end
+assert(dogfood_entries == 8 and dogfood_matrix:find('nvim: "0.11.7"', 1, true) and dogfood_matrix:find('nvim: "0.12.5"', 1, true), "compiler dogfood must cover both supported Neovim versions on Linux and macOS")
 local parsed = parser.parse([[
 import ./math as Math
 type Maybe {
