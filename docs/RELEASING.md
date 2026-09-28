@@ -20,8 +20,8 @@ plugin registry or marketplace is part of this release.
 
 ## Preparing the private tag
 
-1. Update `lua/bend2/version.lua` to the release version and add the matching
-   dated heading and notes to `CHANGELOG.md`.
+1. Confirm `lua/bend2/version.lua` and the dated heading in `CHANGELOG.md` both
+   identify version 1.0.0. If either changes, rerun the complete CI matrix.
 2. Update the latest Bend dogfood version and checksums from the official Bend
    release page; retain Bend 2.0.28 as the minimum compatibility check.
 3. Run all applicable local checks, inspect `git diff --check`, and confirm
@@ -33,6 +33,6 @@ plugin registry or marketplace is part of this release.
    and changelog. Verify the repository and release are private before sharing
    access with testers.
 
-This repository currently identifies itself as an unreleased development
-version. Update the version and changelog only after all release gates have
-passed; creating the private tag and release remains a separate maintainer step.
+The checked-in 1.0.0 candidate has passed the required CI matrix. Keep tag
+creation and the private GitHub release as a separate maintainer step; any code
+or release metadata change after that CI run must pass the matrix again first.

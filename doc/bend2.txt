@@ -28,8 +28,8 @@ your config:
     require("bend2").setup()
 
 The plugin detects files ending in .bend. No default key mappings are created.
-Use |:Bend2Help| to show the command groups. The plugin version begins as an
-unreleased development version and is shown with the compiler in |:Bend2Version|.
+Use |:Bend2Help| to show the command groups. Plugin version 1.0.0 is shown with
+the compiler in |:Bend2Version|.
 
 =============================================================================
 3. CONFIGURATION                                               *bend2-configuration*

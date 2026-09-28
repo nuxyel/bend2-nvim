@@ -1,1 +1,1 @@
-return "0.1.0-dev"
+return "1.0.0"
