@@ -79,6 +79,17 @@ require("bend2").options.auto_import = false
 vim.api.nvim_buf_delete(completion_buf, { force = true })
 vim.fn.delete(root, "rf")
 
+local worktree_parent = vim.fn.tempname()
+local worktree_root = worktree_parent .. "/repo"
+vim.fn.mkdir(worktree_root .. "/nested", "p")
+vim.fn.writefile({ "gitdir: ../.git/worktrees/repo" }, worktree_root .. "/.git")
+vim.fn.writefile({ "def main = 0" }, worktree_root .. "/nested/main.bend")
+local worktree_buf = vim.api.nvim_create_buf(false, true)
+vim.api.nvim_buf_set_name(worktree_buf, worktree_root .. "/nested/main.bend")
+eq(worktree_root, workspace.root(worktree_buf, { root_markers = { ".git" } }), "workspace root detection should accept .git files used by linked worktrees")
+vim.api.nvim_buf_delete(worktree_buf, { force = true })
+vim.fn.delete(worktree_parent, "rf")
+
 local homonym_root = vim.fn.tempname()
 vim.fn.mkdir(homonym_root .. "/.git", "p")
 vim.fn.writefile({ "def helper() = 1" }, homonym_root .. "/lib.bend")
@@ -118,6 +129,13 @@ eq("supported", compiler_info.compatibility)
 eq("supported", toolchain.backend_capability(compiler_info, "javascript"))
 eq("supported", toolchain.backend_capability(compiler_info, "native"))
 eq("supported", toolchain.backend_capability(compiler_info, "gpu"))
+local unavailable_root, unavailable_info = vim.fn.tempname(), nil
+require("bend2").setup({ cmd = unavailable_root .. "/missing-bend", validation = "parser" })
+toolchain.discover(unavailable_root, function(info) unavailable_info = info end, true)
+assert(vim.wait(3000, function() return unavailable_info ~= nil end), "missing compiler discovery callback timed out")
+assert(not unavailable_info.available and unavailable_info.compatibility == "unknown", "editor setup and feature discovery should remain usable without Bend installed")
+vim.fn.delete(unavailable_root, "rf")
+require("bend2").setup({ cmd = fake_bend, validation = "on_save" })
 local check_result
 toolchain.check("fake.bend", vim.fn.getcwd(), function(result) check_result = result end)
 assert(vim.wait(3000, function() return check_result ~= nil end), "compiler check callback timed out")
