@@ -28,7 +28,8 @@ your config:
     require("bend2").setup()
 
 The plugin detects files ending in .bend. No default key mappings are created.
-Use |:Bend2Help| to show the command groups.
+Use |:Bend2Help| to show the command groups. The plugin version begins as an
+unreleased development version and is shown with the compiler in |:Bend2Version|.
 
 =============================================================================
 3. CONFIGURATION                                               *bend2-configuration*
@@ -73,7 +74,7 @@ Editing:
 
 Compiler:
   :Bend2Check              Check the current file without running main().
-  :Bend2CheckWorkspace     Check workspace .bend files.
+  :Bend2CheckWorkspace     Check discovered PROOF.bend suites.
   :Bend2Build              Build the current file.
   :Bend2Run                Select a backend and run the current file.
   :Bend2RunProjectGate     Run scripts/check.sh when present.
@@ -90,6 +91,7 @@ Compiler:
 
 Proofs:
   :Bend2Proofs             Open the law and proof explorer.
+  :Bend2RefreshProofExplorer Refresh the open proof explorer.
   :Bend2OpenProof          Open the selected law's proof.
   :Bend2ProofDetails       Show proof status and dependencies.
   :Bend2ProofGoal          Jump to an open proof goal.
@@ -106,7 +108,7 @@ the compiler. Native and GPU backends depend on the compiler and host toolchain.
 Semantic results come from a tolerant source parser until Bend publishes stable
 AST and source-span APIs. Review inferred results before relying on them.
 
-See docs/SUPPORT.md and docs/DIFFERENTIAL.md in the repository for support and
-report details.
+See docs/SUPPORT.md, docs/DIFFERENTIAL.md and docs/RELEASING.md in the
+repository for support, workflow and release details.
 
  vim:tw=78:ts=8:noet:ft=help:norl:

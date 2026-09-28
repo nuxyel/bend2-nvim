@@ -35,9 +35,11 @@ The plugin is also compatible with Neovim's native package layout. Clone it to
 ## Commands
 
 Run `:Bend2Help` for the complete command list. `:Bend2Snippet` inserts the
-bundled function, law, match and parallel-call templates. Commands have no default key
-maps. Use `:Bend2Proofs` to browse laws and proofs. Use `:Bend2Check` to run a
-compiler check without executing `main()`.
+bundled function, law, match and parallel-call templates. Commands have no
+default key maps. Use `:Bend2Proofs` to browse laws and proofs;
+`:Bend2RefreshProofExplorer` refreshes compiler-derived statuses. `:Bend2Check`
+runs a compiler check without executing `main()`. Workspace check runs the
+discovered `PROOF.bend` suites, matching the VS Code test workflow.
 
 ## Configuration
 
@@ -54,7 +56,8 @@ require("bend2").setup({
 ```
 
 See [docs/SUPPORT.md](docs/SUPPORT.md), [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md),
-[docs/DIFFERENTIAL.md](docs/DIFFERENTIAL.md), and [CHANGELOG.md](CHANGELOG.md).
+[docs/DIFFERENTIAL.md](docs/DIFFERENTIAL.md), [docs/RELEASING.md](docs/RELEASING.md),
+and [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

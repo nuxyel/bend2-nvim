@@ -20,7 +20,7 @@ contain at least two distinct supported names. `threads` must be a positive
 integer when set. `gpuMemory` accepts `on` or a limit such as `4GB`. Paths
 outside the workspace are rejected.
 
-`:Bend2Benchmark` compiles once, discards one warm-up run, measures the
-requested run count for each selected thread count, checks output stability,
+`:Bend2Benchmark` compiles once per thread-count/GPU configuration, discards
+one warm-up run per configuration, measures the requested run count, checks output stability,
 and writes a JSON report under `.bend/benchmarks/`. Benchmark results are
 machine-specific observations, not promises of speedup.
