@@ -24,6 +24,7 @@ end
 function M.setup(opts)
   M.options = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
   require("bend2.toolchain").cache = {}
+  require("bend2.base_completion").clear()
   assert(({ parser = true, on_save = true, on_type = true, off = true })[M.options.validation], "bend2.validation must be parser, on_save, on_type, or off")
   assert(({ auto = true, text = true, json = true })[M.options.diagnostics_mode], "bend2.diagnostics_mode must be auto, text, or json")
   if configured then

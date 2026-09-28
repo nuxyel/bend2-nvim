@@ -35,6 +35,17 @@ eq("Maybe.Some", parsed.symbols[3].name)
 assert(#parsed.diagnostics >= 1, "open proof should be diagnosed")
 eq("add", parser.identifier_at("def add x = x", 0, 5))
 assert(parser.code_only("def add x = x # comment"):match("^def add x = x%s+$"))
+local base_names = require("bend2.base_completion").parse([[
+# Types
+type BendBaseChoice is Data:
+  BendBaseFirst{}
+  BendBaseSecond{value: Nat}
+
+def BendBaseFunction(x) = x
+law BendBaseLaw = True
+  ignored_internal_name = 1
+]])
+eq({ "BendBaseChoice", "BendBaseFirst", "BendBaseFunction", "BendBaseLaw", "BendBaseSecond" }, base_names, "Bend Base completion should include declarations and constructors only")
 local compiler_syntax = parser.parse("public def Math.add(x) = x\ntype Option is Data:\n  Some{}\n  Some{}\ndef run?() = 0")
 eq("Math.add", compiler_syntax.symbols[1].name, "public qualified declarations should parse")
 assert(compiler_syntax.diagnostics[1].message:match("Duplicate declaration 'Option.Some'"), "duplicate constructors should be diagnosed")
@@ -113,6 +124,7 @@ vim.fn.writefile({
   "case \"$1\" in",
   "  --version|version) echo 'Bend 2.0.32'; exit 0;;",
   "  guide) echo 'JavaScript target native executable --gpu'; exit 0;;",
+  "  base) printf '%s\\n' 'type BendBaseChoice is Data:' '  BendBaseVariant{}' 'def BendBaseFunction(x) = x' 'law BendBaseLaw = True'; exit 0;;",
   "esac",
   "if [ \"$1\" = 'racing.bend' ]; then sleep 0.15; fi",
   "if [ \"$3\" = '--diagnostics=json' ]; then",
@@ -123,6 +135,20 @@ vim.fn.writefile({
 }, fake_bend)
 vim.fn.setfperm(fake_bend, "rwxr-xr-x")
 require("bend2").setup({ cmd = fake_bend })
+local base_completion = require("bend2.base_completion")
+local completion_root = vim.fn.getcwd()
+eq(nil, base_completion.get(completion_root), "Bend Base symbols should not block the first completion request")
+base_completion.request(completion_root)
+assert(vim.wait(3000, function() return base_completion.get(completion_root) ~= nil end, 10), "Bend Base completion request timed out")
+local base_buf = vim.api.nvim_create_buf(false, true)
+vim.api.nvim_buf_set_name(base_buf, completion_root .. "/base-completion-test.bend")
+vim.api.nvim_buf_set_lines(base_buf, 0, -1, false, { "def main = BendBase" })
+vim.bo[base_buf].filetype = "bend"
+vim.api.nvim_set_current_buf(base_buf)
+local base_items, base_item = require("bend2.editor").complete(0, "BendBase"), nil
+for _, item in ipairs(base_items) do if item.word == "BendBaseVariant" then base_item = item end end
+assert(base_item and base_item.menu == "Bend Base", "compiler-derived Bend Base symbols should appear in completion results")
+vim.api.nvim_buf_delete(base_buf, { force = true })
 for _, name in ipairs({ "Bend2Check", "Bend2CheckWorkspace", "Bend2Build", "Bend2Run", "Bend2RunProjectGate", "Bend2RunSabotage", "Bend2Proofs", "Bend2RefreshProofExplorer", "Bend2ProofGoal", "Bend2ProbeBackend", "Bend2CompareBackends", "Bend2CompareProjectBackends", "Bend2Benchmark", "Bend2Environment", "Bend2Support", "Bend2TypeDefinition", "Bend2CallHierarchy", "Bend2Cancel" }) do
   eq(2, vim.fn.exists(":" .. name), "public command " .. name .. " must be registered")
 end

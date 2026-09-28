@@ -54,6 +54,11 @@ root_dir        Explicit root path or function(buffer) returning a path.
 validation      "parser", "on_save", "on_type", or "off". Default: "on_save".
 diagnostics_mode "auto", "text", or "json". Default: "auto".
 auto_import     Add a local import after selecting a completion item. Default: false.
+
+Completion includes Bend's bundled declarations and constructors. The first
+completion request starts `bend base` asynchronously and returns immediately;
+the result is available on subsequent completion requests. Static editor
+completion continues to work if Bend is not installed or the command fails.
 formatter       Enable |:Bend2Format|. Default: true.
 
 =============================================================================

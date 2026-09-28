@@ -509,15 +509,24 @@ function M.complete(findstart, base)
   end
   local path = vim.api.nvim_buf_get_name(buf)
   local root = workspace.root(buf, require("bend2").options)
+  local base_completion = require("bend2.base_completion")
+  base_completion.request(root)
   local source = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
   local parsed = parser.parse(source, path)
   local names = { "def", "law", "type", "is", "import", "as", "public", "private", "match", "case", "return", "do", "for", "exs", "where", "let", "if", "Nat", "U8", "U16", "U32", "U64", "U128", "IO", "Bool", "String", "Char", "F32", "F64", "True", "False", "Type", "Data", "Pair", "Option", "Result", "List", "Array", "Map", "Some", "None" }
   local docs, imported_paths = workspace.symbols(root), {}
+  local base_names, base_set = base_completion.get(root) or {}, {}
+  for _, name in ipairs(base_names) do names[#names + 1] = name; base_set[name] = true end
   for _, item in ipairs(parsed.imports) do if item.resolvedPath then imported_paths[vim.fs.normalize(item.resolvedPath)] = true end end
   for _, doc in ipairs(docs) do for _, symbol in ipairs(doc.parsed.symbols) do if symbol.kind ~= "import" then names[#names + 1] = symbol.name end end end
   for word in pairs(parsed.words) do names[#names + 1] = word end
   local seen, out = {}, {}
-  for _, name in ipairs(names) do if name:find(base, 1, true) == 1 and not seen[name] then seen[name] = true; out[#out + 1] = { word = name, menu = "Bend 2" } end end
+  for _, name in ipairs(names) do
+    if name:find(base, 1, true) == 1 and not seen[name] then
+      seen[name] = true
+      out[#out + 1] = { word = name, menu = base_set[name] and "Bend Base" or "Bend 2" }
+    end
+  end
   if require("bend2").options.auto_import then
     local used_aliases = vim.deepcopy(parsed.words)
     for _, item in ipairs(parsed.imports) do used_aliases[item.alias] = true end
