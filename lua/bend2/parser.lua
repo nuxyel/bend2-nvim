@@ -29,6 +29,14 @@ local function exists_file(path)
   return stat and stat.type == "file"
 end
 
+local function valid_qualified_name(name)
+  if not name or name == "" or name:sub(1, 1) == "." or name:sub(-1) == "." or name:find("..", 1, true) then return false end
+  for segment in name:gmatch("[^.]+") do
+    if not segment:match("^[A-Za-z_][A-Za-z0-9_]*$") then return false end
+  end
+  return true
+end
+
 function M.resolve_import(file, import_path)
   if not file or import_path:sub(1, 1) ~= "." then return nil end
   local base = vim.fs.normalize(vim.fs.joinpath(vim.fs.dirname(file), import_path))
@@ -73,9 +81,10 @@ function M.parse(source, file)
     if active_type and code:match("%S") and not line:match("^%s") then active_type = nil end
     local indent = code:match("^(%s*)") or ""
     local declaration = code:sub(#indent + 1)
-    if declaration:match("^public%s+") then declaration = declaration:gsub("^public%s+", "")
-    elseif declaration:match("^private%s+") then declaration = declaration:gsub("^private%s+", "") end
+    local visibility = declaration:match("^(public)%s+") or declaration:match("^(private)%s+")
+    if visibility then declaration = declaration:gsub("^" .. visibility .. "%s+", "") end
     local keyword, name = declaration:match("^(%a+)%s+([A-Za-z_][A-Za-z0-9_.]*)")
+    if not valid_qualified_name(name) then keyword, name = nil, nil end
     if keyword == "def" or keyword == "law" or keyword == "type" then
       local start_col = (code:find(name, #indent + 1, true) or 1) - 1
       local item = { name = name, kind = keyword == "def" and "function" or keyword, detail = keyword .. " " .. name, range = range(line_number, #indent, #line), selectionRange = range(line_number, start_col, start_col + #name) }
@@ -88,7 +97,10 @@ function M.parse(source, file)
       if ctor then
         local full_name = active_type .. "." .. ctor
         local pos = code:find(ctor, 1, true) - 1
-        result.symbols[#result.symbols + 1] = { name = full_name, kind = "constructor", detail = "constructor " .. full_name, range = range(line_number, pos, #line), selectionRange = range(line_number, pos, pos + #ctor) }
+        local item = { name = full_name, kind = "constructor", detail = "constructor " .. full_name, range = range(line_number, pos, #line), selectionRange = range(line_number, pos, pos + #ctor) }
+        if seen[full_name] then
+          result.diagnostics[#result.diagnostics + 1] = { message = "Duplicate declaration '" .. full_name .. "'.", severity = "error", source = "bend2-parser", range = item.selectionRange }
+        else seen[full_name], result.symbols[#result.symbols + 1] = item, item end
       end
     end
     local path, alias = code:match("^%s*import%s+([^%s]+)%s+as%s+([A-Za-z_][A-Za-z0-9_]*)")
@@ -103,9 +115,12 @@ function M.parse(source, file)
         result.diagnostics[#result.diagnostics + 1] = { message = "Cannot resolve local import '" .. path .. "'.", severity = "error", source = "bend2-parser", range = import.range }
       end
     end
-    for token in code:gmatch("%?[%w_]+") do
-      local pos = code:find(token, 1, true) - 1
-      result.diagnostics[#result.diagnostics + 1] = { message = "Open proof goal '" .. token .. "'.", severity = "warning", source = "bend2-proof", range = range(line_number, pos, pos + #token) }
+    local unsafe_function = code:match("^%s*def%s+[A-Za-z_][A-Za-z0-9_.]*%?%s*%(") ~= nil
+    if not unsafe_function then
+      for token in code:gmatch("%?[%w_]+") do
+        local pos = code:find(token, 1, true) - 1
+        result.diagnostics[#result.diagnostics + 1] = { message = "Open proof goal '" .. token .. "'.", severity = "warning", source = "bend2-proof", range = range(line_number, pos, pos + #token) }
+      end
     end
     for _, marker in ipairs({ "@unsafe", "foreign" }) do
       local start = code:find("^%s*" .. marker)
