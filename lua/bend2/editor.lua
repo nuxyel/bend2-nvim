@@ -269,6 +269,62 @@ function M.goto_definition()
   vim.api.nvim_win_set_cursor(0, { start.line + 1, start.character })
 end
 
+function M.type_definition()
+  local buf, path, row, col = cursor_context()
+  local target = workspace.definition(path, row, col, workspace.root(buf, require("bend2").options))
+  if not target or target.symbol.kind ~= "type" then vim.notify("Bend 2 type definition not found.", vim.log.levels.INFO); return end
+  local start = target.symbol.selectionRange.start
+  vim.cmd.edit(vim.fn.fnameescape(target.path))
+  vim.api.nvim_win_set_cursor(0, { start.line + 1, start.character })
+end
+
+function M.open_import()
+  local buf, path, row, col = cursor_context()
+  local doc = workspace.document(path)
+  if not doc then return end
+  for _, item in ipairs(doc.parsed.imports) do
+    if item.range.start.line == row and col >= item.range.start.character and col <= item.range.finish.character then
+      if item.resolvedPath then vim.cmd.edit(vim.fn.fnameescape(item.resolvedPath)) else vim.notify("Bend 2 import could not be resolved: " .. item.path, vim.log.levels.WARN) end
+      return
+    end
+  end
+  vim.notify("No Bend 2 import at the cursor.", vim.log.levels.INFO)
+end
+
+function M.call_hierarchy()
+  local buf, path, row, col = cursor_context()
+  local target = workspace.definition(path, row, col, workspace.root(buf, require("bend2").options))
+  if not target then vim.notify("Place the cursor on a Bend 2 symbol.", vim.log.levels.WARN); return end
+  vim.ui.select({ "Incoming calls", "Outgoing calls" }, { prompt = "Bend 2 call hierarchy for " .. target.symbol.name }, function(direction)
+    if not direction then return end
+    local root = workspace.root(buf, require("bend2").options)
+    local qf, docs = {}, workspace.symbols(root)
+    if direction == "Incoming calls" then
+      for _, ref in ipairs(workspace.references(target.path, target.symbol.selectionRange.start.line, target.symbol.selectionRange.start.character, root)) do
+        qf[#qf + 1] = { filename = ref.path, lnum = ref.row + 1, col = ref.col + 1, text = "call to " .. target.symbol.name .. ": " .. ref.text }
+      end
+    else
+      for _, doc in ipairs(docs) do
+        if doc.path == target.path then
+          local lines = vim.split(doc.source, "\n", { plain = true })
+          local active = false
+          for row_idx, line in ipairs(lines) do
+            if line:match("^%s*def%s+") then active = line:find(target.symbol.name, 1, true) ~= nil and line:find("def", 1, true) ~= nil
+            elseif active then
+              for start, name in line:gmatch("()([A-Za-z_][A-Za-z0-9_]*)%s*%(") do
+                local found = workspace.definition(doc.path, row_idx - 1, start - 1, root)
+                if found then qf[#qf + 1] = { filename = found.path, lnum = found.symbol.selectionRange.start.line + 1, col = found.symbol.selectionRange.start.character + 1, text = "called by " .. target.symbol.name .. ": " .. name .. "()" } end
+              end
+            end
+          end
+        end
+      end
+    end
+    vim.fn.setqflist({}, " ", { title = "Bend 2 " .. direction:lower(), items = qf })
+    vim.cmd.copen()
+  end)
+end
+
 function M.references()
   local buf, path, row, col = cursor_context()
   local results = workspace.references(path, row, col, workspace.root(buf, require("bend2").options))
@@ -345,12 +401,62 @@ function M.complete(findstart, base)
   local root = workspace.root(buf, require("bend2").options)
   local parsed = parser.parse(table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n"), path)
   local names = { "def", "law", "type", "import", "match", "case", "return", "Nat", "IO", "Bool", "True", "False" }
+  local auto_imports = {}
   for _, doc in ipairs(workspace.symbols(root)) do for _, symbol in ipairs(doc.parsed.symbols) do names[#names + 1] = symbol.name end end
   for word in pairs(parsed.words) do names[#names + 1] = word end
   local seen, out = {}, {}
   for _, name in ipairs(names) do if name:find(base, 1, true) == 1 and not seen[name] then seen[name] = true; out[#out + 1] = { word = name, menu = "Bend 2" } end end
+  if require("bend2").options.auto_import then
+    for _, doc in ipairs(workspace.symbols(root)) do
+      if doc.path ~= path then
+        local alias = vim.fs.basename(doc.path):gsub("%.bend$", "")
+        if alias:lower() == "main" then alias = vim.fs.basename(vim.fs.dirname(doc.path)) end
+        alias = alias:sub(1, 1):upper() .. alias:sub(2):gsub("[^A-Za-z0-9_]", "_")
+        for _, symbol in ipairs(doc.parsed.symbols) do
+          if symbol.kind ~= "import" then
+            local short = symbol.name:match("([^%.]+)$") or symbol.name
+            local word = alias .. "." .. short
+            if word:find(base, 1, true) == 1 and not seen[word] then
+              seen[word] = true
+              local relative = vim.fs.relpath(vim.fs.dirname(path), doc.path)
+              if relative and relative:sub(1, 1) ~= "." then relative = "./" .. relative end
+              out[#out + 1] = { word = word, menu = "Bend 2 import", user_data = vim.json.encode({ alias = alias, path = relative }) }
+            end
+          end
+        end
+      end
+    end
+  end
   table.sort(out, function(a, b) return a.word < b.word end)
   return out
+end
+
+function M.complete_done()
+  local item = vim.v.completed_item
+  if not item or not item.user_data or item.user_data == "" then return end
+  local ok, details = pcall(vim.json.decode, item.user_data)
+  if not ok or type(details) ~= "table" or not details.path then return end
+  local buf = vim.api.nvim_get_current_buf()
+  local source = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+  if source:match("import%s+" .. vim.pesc(details.path) .. "%s+as%s+" .. vim.pesc(details.alias)) then return end
+  vim.api.nvim_buf_set_lines(buf, 0, 0, false, { "import " .. details.path .. " as " .. details.alias })
+end
+
+function M.insert_snippet()
+  local templates = {
+    ["Bend function"] = { "def name(x: Nat) -> Nat:", "  ?TODO" },
+    ["Bend law"] = { "law name:", "  for x: Nat", "  {proposition : Bool}" },
+    ["Bend proof match"] = { "match value:", "  case pattern:", "    ?TODO" },
+    ["Bend parallel call"] = { "left right = leftCall rightCall" },
+  }
+  local names = { "Bend function", "Bend law", "Bend proof match", "Bend parallel call" }
+  vim.ui.select(names, { prompt = "Bend 2 snippet" }, function(choice)
+    if not choice then return end
+    local lines = templates[choice]
+    local cursor = vim.api.nvim_win_get_cursor(0)
+    vim.api.nvim_buf_set_text(0, cursor[1] - 1, cursor[2], cursor[1] - 1, cursor[2], lines)
+    vim.api.nvim_win_set_cursor(0, { cursor[1], cursor[2] + 4 })
+  end)
 end
 
 function M.signature()

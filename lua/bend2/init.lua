@@ -33,8 +33,10 @@ function M.setup(opts)
   vim.api.nvim_create_autocmd("FileType", { group = group, pattern = "bend", callback = function(event)
     vim.bo[event.buf].omnifunc = "v:lua.require'bend2.editor'.complete"
     vim.bo[event.buf].formatexpr = "v:lua.require'bend2.editor'.format_expr"
+    vim.bo[event.buf].foldmethod = "indent"
     editor.validate_buffer(event.buf)
   end })
+  vim.api.nvim_create_autocmd("CompleteDone", { group = group, pattern = "*.bend", callback = editor.complete_done })
   vim.api.nvim_create_autocmd({ "BufWritePost", "TextChanged", "TextChangedI" }, { group = group, pattern = "*.bend", callback = function(event)
     if M.options.validation == "off" then vim.diagnostic.reset(M.namespace, event.buf); return end
     if event.event == "BufWritePost" then editor.validate_buffer(event.buf, true)
@@ -48,7 +50,7 @@ function M.setup(opts)
 
   command("Bend2Help", function()
     local lines = {
-      "Bend 2 for Neovim", "", "Editing: :Bend2Format :Bend2Hover :Bend2Signature :Bend2Definition :Bend2References :Bend2Rename :Bend2Symbols",
+      "Bend 2 for Neovim", "", "Editing: :Bend2Format :Bend2Snippet :Bend2Hover :Bend2Signature :Bend2Definition :Bend2TypeDefinition :Bend2OpenImport :Bend2References :Bend2Rename :Bend2CallHierarchy :Bend2Symbols",
       "Compiler: :Bend2Check :Bend2CheckWorkspace :Bend2Build :Bend2Run :Bend2Base :Bend2Version :Bend2Environment :Bend2Support",
       "Proofs: :Bend2Proofs :Bend2OpenProof :Bend2ProofDetails :Bend2ProofGoal :Bend2CheckProof :Bend2ReviewLawChanges",
       "Backends: :Bend2ProbeBackend :Bend2CompareBackends :Bend2CompareProjectBackends :Bend2Benchmark",
@@ -59,7 +61,11 @@ function M.setup(opts)
     vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
   end, "Show Bend 2 commands")
   command("Bend2Format", editor.format, "Format the current Bend 2 buffer")
+  command("Bend2Snippet", editor.insert_snippet, "Insert a Bend 2 code template")
   command("Bend2Definition", editor.goto_definition, "Go to Bend 2 definition")
+  command("Bend2TypeDefinition", editor.type_definition, "Go to Bend 2 type definition")
+  command("Bend2OpenImport", editor.open_import, "Open Bend 2 import under cursor")
+  command("Bend2CallHierarchy", editor.call_hierarchy, "Show Bend 2 incoming or outgoing calls")
   command("Bend2References", editor.references, "List Bend 2 references")
   command("Bend2Rename", function(args) editor.rename(args.args) end, "Rename Bend 2 symbol", { nargs = 1 })
   command("Bend2Hover", editor.hover, "Show Bend 2 symbol details")

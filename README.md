@@ -34,7 +34,8 @@ The plugin is also compatible with Neovim's native package layout. Clone it to
 
 ## Commands
 
-Run `:Bend2Help` for the complete command list. Commands have no default key
+Run `:Bend2Help` for the complete command list. `:Bend2Snippet` inserts the
+bundled function, law, match and parallel-call templates. Commands have no default key
 maps. Use `:Bend2Proofs` to browse laws and proofs. Use `:Bend2Check` to run a
 compiler check without executing `main()`.
 

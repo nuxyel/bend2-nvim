@@ -71,5 +71,7 @@ assert(reviewed.normalize and not reviewed.other)
 local formatter = require("bend2.formatter")
 eq("def add x y = x + y\n", formatter.format("def add x y=x+y\n"), "formatter should normalize operator spacing")
 eq("# comment\n", formatter.format("# comment\n"), "formatter should preserve comment-only lines")
+local once = formatter.format("def add x y=x+y\n")
+eq(once, formatter.format(once), "formatter should be idempotent")
 
 print("Bend2 Neovim unit checks passed")

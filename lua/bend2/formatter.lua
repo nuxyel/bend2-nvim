@@ -72,7 +72,7 @@ function M.format(source, options)
   local final_eol = source:sub(-1) == "\n"
   local lines = vim.split(source:gsub("\r\n", "\n"), "\n", { plain = true })
   if final_eol then table.remove(lines) end
-  local stack, formatted = { 0 }, {}
+  local stack, formatted, fingerprints = { 0 }, {}, {}
   local width = tonumber(options.tabSize) or 2
   local use_spaces = options.insertSpaces ~= false
   for _, raw in ipairs(lines) do
@@ -89,6 +89,9 @@ function M.format(source, options)
     local comment = comment_at and source_line:sub(comment_at) or ""
     local tokens = tokenize(code)
     if not tokens then return source end
+    local fingerprint = {}
+    for _, token in ipairs(tokens) do fingerprint[#fingerprint + 1] = token.text end
+    fingerprints[#fingerprints + 1] = table.concat(fingerprint, "\31")
     if #tokens > 0 or comment ~= "" then
       local current_width = 0
       for i = 1, #indent do current_width = current_width + (indent:sub(i, i) == "\t" and (8 - current_width % 8) or 1) end
@@ -103,6 +106,15 @@ function M.format(source, options)
   end
   local out = table.concat(formatted, eol) .. (final_eol and eol or "")
   if #formatted ~= #lines then return source end
+  local check_lines = vim.split(out:gsub("\r\n", "\n"), "\n", { plain = true })
+  if final_eol then table.remove(check_lines) end
+  for index, line in ipairs(check_lines) do
+    local code = line:match("^(.-)#") or line
+    local tokens, current = tokenize(code), {}
+    if not tokens then return source end
+    for _, token in ipairs(tokens) do current[#current + 1] = token.text end
+    if table.concat(current, "\31") ~= fingerprints[index] then return source end
+  end
   return out
 end
 
