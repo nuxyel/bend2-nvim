@@ -1,6 +1,8 @@
--- Derived from Bend 2's official bend-fmt-lsp formatter.
+-- Lua adaptation of Bend 2's official bend-fmt-lsp formatter.
+-- Upstream copyright 2026 HigherOrderCO; Lua port and Neovim changes copyright 2026 Renan Vinícius.
+-- Licensed under Apache-2.0; see LICENSE and NOTICE.
 -- Source: https://github.com/bendlang/bend/tree/main/tools/bend-fmt-lsp
--- Keep this implementation synchronized with that formatter's contract.
+-- This adapted implementation should stay synchronized with the upstream formatter contract.
 local M = {}
 
 local multi = { "<&>", ".|.", ".^.", ".&.", "==", "!=", "->", "<-", "=>", "&&", "||", "++", "<>", "<=", ">=", "<<", ">>" }
