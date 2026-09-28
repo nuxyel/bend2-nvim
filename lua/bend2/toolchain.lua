@@ -105,8 +105,18 @@ function M.discover(root, callback, refresh)
     local version = parse_version(output)
     M.run({ "guide" }, root, function(guide)
       local text = guide.stdout .. "\n" .. guide.stderr
-      local function has(pattern) return text:match(pattern) ~= nil end
-      local info = { available = true, version = version, compatibility = compatible(version), capabilities = { javascript = has("JavaScript") and "supported" or "unknown", native = has("native") and "supported" or "unknown", gpu = has("GPU") and "supported" or "unknown", threads = has("threads") and "supported" or "unknown" } }
+      local lower = text:lower()
+      local function capability(positive, negative)
+        for _, phrase in ipairs(negative) do if lower:find(phrase, 1, true) then return "unsupported" end end
+        for _, phrase in ipairs(positive) do if lower:find(phrase, 1, true) then return "supported" end end
+        return "unknown"
+      end
+      local info = { available = true, version = version, compatibility = compatible(version), capabilities = {
+        javascript = capability({ "javascript target", "js backend", "file.js" }, { "javascript unavailable", "javascript not supported", "javascript unsupported", "javascript disabled" }),
+        native = capability({ "native executable", "native binary", "compile to c", "clang" }, { "native unavailable", "native not supported", "native unsupported", "native disabled" }),
+        gpu = capability({ "--gpu", "gpu" }, { "gpu unavailable", "gpu not supported", "gpu unsupported", "gpu disabled" }),
+        threads = capability({ "--threads", "thread count", "cpu threads" }, { "threads unavailable", "threads not supported", "threads unsupported", "threads disabled" }),
+      } }
       M.cache[root] = info
       callback(info)
     end, 5000)
@@ -223,18 +233,26 @@ function M.check(path, root, callback)
     if not info.available then callback({ code = nil, stderr = info.error, diagnostics = {}, compiler = info }); return end
     local args = { path, "--check-only" }
     if config().diagnostics_mode ~= "text" then args[#args + 1] = "--diagnostics=json" end
-    local process = M.run(args, root, function(result)
-      M.checks[path] = nil
+    local process
+    process = M.run(args, root, function(result)
+      if M.checks[path] == process then M.checks[path] = nil end
+      if result.cancelled or result.timed_out then
+        result.diagnostics, result.compiler = {}, info
+        callback(result)
+        return
+      end
       local combined = result.stdout .. "\n" .. result.stderr
       local diagnostics = parse_diagnostics(combined, path)
       if config().diagnostics_mode ~= "text" and #diagnostics == 0 and combined:match("unknown%s+option") then
-        local fallback_process = M.run({ path, "--check-only" }, root, function(fallback)
-          M.checks[path] = nil
+        local fallback_process
+        fallback_process = M.run({ path, "--check-only" }, root, function(fallback)
+          if M.checks[path] == fallback_process then M.checks[path] = nil end
           fallback.diagnostics = parse_diagnostics(fallback.stdout .. "\n" .. fallback.stderr, path)
           fallback.compiler = info
           callback(fallback)
         end, 120000)
-        M.checks[path] = fallback_process
+        process = fallback_process
+        M.checks[path] = process
       else
         result.diagnostics, result.compiler = diagnostics, info
         if result.code ~= 0 and #diagnostics == 0 then result.diagnostics = { { file = path, line = 0, col = 0, severity = "error", message = result.stderr ~= "" and result.stderr or result.stdout } } end
@@ -249,6 +267,10 @@ function M.command(args, root, callback, timeout_ms)
   M.run(args, root, callback, timeout_ms or 120000)
 end
 
+function M.backend_capability(info, profile)
+  return info.capabilities and info.capabilities[profile] or "unknown"
+end
+
 function M.build(path, output, root, callback)
   M.run({ path, "-o", output }, root, callback, 120000)
 end
@@ -256,22 +278,26 @@ end
 function M.run_profile(path, root, profile, callback, options)
   options = options or {}
   profile = profile or "javascript"
-  if profile == "javascript" then
-    M.run({ path }, root, callback, 120000)
-    return
-  end
-  local directory = vim.fn.tempname()
-  vim.fn.mkdir(directory, "p")
-  local executable = vim.fs.joinpath(directory, "bend2-program")
-  M.build(path, executable, root, function(build)
-    if build.code ~= 0 then vim.fn.delete(directory, "rf"); callback(build); return end
-    local args = {}
-    if options.threads then args = { "--threads", tostring(options.threads) } end
-    if profile == "gpu" then vim.list_extend(args, { "--gpu", options.gpu_memory or "on" }) end
-    M.run_binary(executable, args, root, function(result)
-      vim.fn.delete(directory, "rf")
-      callback(result)
-    end, 120000)
+  M.discover(root, function(info)
+    if not info.available then callback({ code = nil, stdout = "", stderr = info.error, compiler = info }); return end
+    if M.backend_capability(info, profile) == "unsupported" then
+      callback({ code = nil, stdout = "", stderr = "The active Bend compiler does not advertise the " .. profile .. " backend.", compiler = info })
+      return
+    end
+    if profile == "javascript" then M.run({ path }, root, callback, 120000); return end
+    local directory = vim.fn.tempname()
+    vim.fn.mkdir(directory, "p")
+    local executable = vim.fs.joinpath(directory, "bend2-program")
+    M.build(path, executable, root, function(build)
+      if build.code ~= 0 then vim.fn.delete(directory, "rf"); callback(build); return end
+      local args = {}
+      if options.threads then args = { "--threads", tostring(options.threads) } end
+      if profile == "gpu" then vim.list_extend(args, { "--gpu", options.gpu_memory or "on" }) end
+      M.run_binary(executable, args, root, function(result)
+        vim.fn.delete(directory, "rf")
+        callback(result)
+      end, 120000)
+    end)
   end)
 end
 
@@ -290,7 +316,9 @@ function M.compare(path, root, profiles, callback, options)
         if item.result.code ~= 0 then comparable = false else hashes[vim.fn.sha256(item.result.stdout)] = true end
       end
       local count = 0; for _ in pairs(hashes) do count = count + 1 end
-      callback({ runs = runs, comparable = comparable, outputsMatch = comparable and count == 1 })
+      local error
+      for _, item in ipairs(runs) do if item.result.code ~= 0 and item.result.stderr ~= "" then error = item.result.stderr; break end end
+      callback({ runs = runs, comparable = comparable, outputsMatch = comparable and count == 1, error = error })
       return
     end
     M.run_profile(path, root, profile, function(result)
@@ -305,19 +333,29 @@ function M.compare(path, root, profiles, callback, options)
 end
 
 function M.probe(path, root, profile, callback)
-  if profile == "javascript" then
-    M.check(path, root, function(result) callback({ profile = profile, status = result.code == 0 and "ready" or result.code == nil and "unavailable" or "failed", compiler = result.compiler, result = result }) end)
-  elseif profile == "native" then
-    local directory = vim.fn.tempname(); vim.fn.mkdir(directory, "p")
-    M.build(path, vim.fs.joinpath(directory, "probe"), root, function(result)
-      vim.fn.delete(directory, "rf")
-      callback({ profile = profile, status = result.code == 0 and "ready" or result.code == nil and "unavailable" or "failed", result = result })
-    end)
-  else
-    M.run_profile(path, root, "gpu", function(result)
-      callback({ profile = profile, status = result.code == 0 and "ready" or result.code == nil and "unavailable" or "failed", result = result })
-    end)
+  local function status(result)
+    if result.cancelled then return "cancelled" end
+    if result.timed_out then return "timed out" end
+    if result.code == nil then return "unavailable" end
+    return result.code == 0 and "ready" or "failed"
   end
+  M.discover(root, function(info)
+    if not info.available then callback({ profile = profile, status = "unavailable", compiler = info, error = info.error }); return end
+    if M.backend_capability(info, profile) == "unsupported" then callback({ profile = profile, status = "unsupported", compiler = info, error = "The active Bend compiler does not advertise the " .. profile .. " backend." }); return end
+    if profile == "javascript" then
+      M.check(path, root, function(result) callback({ profile = profile, status = status(result), compiler = info, result = result }) end)
+    elseif profile == "native" then
+      local directory = vim.fn.tempname(); vim.fn.mkdir(directory, "p")
+      M.build(path, vim.fs.joinpath(directory, "probe"), root, function(result)
+        vim.fn.delete(directory, "rf")
+        callback({ profile = profile, status = status(result), compiler = info, result = result })
+      end)
+    else
+      M.run_profile(path, root, "gpu", function(result)
+        callback({ profile = profile, status = status(result), compiler = info, result = result })
+      end)
+    end
+  end)
 end
 
 function M.compare_project(root, callback)
@@ -366,14 +404,26 @@ function M.compare_project(root, callback)
   next_file()
 end
 
-function M.gate(root, kind, callback)
+function M.gate(root, kind, callback, target)
   local name = kind == "sabotage" and "sabotagem" or "check"
+  local args = {}
+  if target and target:match("%S") then
+    if target:match("^[/\\]") or target:match("^[A-Za-z]:[/\\]") then callback({ code = nil, stdout = "", stderr = "Gate target must be a relative path inside the workspace." }); return end
+    local resolved = vim.fs.normalize(vim.fs.joinpath(root, target))
+    local relative = vim.fs.relpath(vim.fs.normalize(root), resolved)
+    if not relative or relative == ".." or relative:match("^%.%.[/\\]") then callback({ code = nil, stdout = "", stderr = "Gate target must stay inside the Bend 2 workspace." }); return end
+    args[1] = relative
+  end
   local candidates = { "scripts/" .. name .. ".sh", "scripts/" .. name .. ".ps1", "scripts/" .. name .. ".cmd" }
   for _, relative in ipairs(candidates) do
     local path = vim.fs.joinpath(root, relative)
     if vim.uv.fs_stat(path) then
-      local args = path:match("%.sh$") and { "bash", path } or path:match("%.ps1$") and { "pwsh", "-NoProfile", "-File", path } or { path }
-      M.run_binary(args[1], vim.list_slice(args, 2), root, callback, 120000); return
+      local command, prefix
+      if path:match("%.sh$") then command, prefix = "bash", { path }
+      elseif path:match("%.ps1$") then command, prefix = "pwsh", { "-NoProfile", "-File", path }
+      else command, prefix = path, {} end
+      vim.list_extend(prefix, args)
+      M.run_binary(command, prefix, root, callback, 120000); return
     end
   end
   callback({ code = nil, stdout = "", stderr = "Bend 2 " .. kind .. " gate was not found under scripts/" })
@@ -383,6 +433,9 @@ function M.benchmark(path, root, runs, callback, options)
   options = options or {}
   runs = math.max(1, math.min(20, tonumber(runs) or 3))
   M.discover(root, function(compiler)
+    if not compiler.available then callback({ ok = false, error = compiler.error, compiler = compiler }); return end
+    if M.backend_capability(compiler, "native") == "unsupported" then callback({ ok = false, error = "The active Bend compiler does not advertise the native backend.", compiler = compiler }); return end
+    if (options.gpu or "off") ~= "off" and M.backend_capability(compiler, "gpu") == "unsupported" then callback({ ok = false, error = "The active Bend compiler does not advertise the GPU backend.", compiler = compiler }); return end
     local directory = vim.fn.tempname(); vim.fn.mkdir(directory, "p")
     local executable, samples, output_hashes, index = vim.fs.joinpath(directory, "bend2-benchmark"), {}, {}, 0
     M.build(path, executable, root, function(build)

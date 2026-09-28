@@ -5,6 +5,18 @@ local function eq(expected, actual, message)
 end
 
 local parser = require("bend2.parser")
+local plugin_version = require("bend2.version")
+assert(plugin_version:match("^%d+%.%d+%.%d+%-dev$") or plugin_version:match("^%d+%.%d+%.%d+$"), "plugin version must be a development identifier or semantic release version")
+if not plugin_version:match("%-dev$") then
+  local changelog = table.concat(vim.fn.readfile("CHANGELOG.md"), "\n")
+  assert(changelog:match("## " .. vim.pesc(plugin_version)), "stable plugin version must have a matching changelog heading")
+end
+local compiler_pins = vim.json.decode(table.concat(vim.fn.readfile("tests/dogfood/compiler-versions.json"), "\n"))
+local ci_workflow = table.concat(vim.fn.readfile(".github/workflows/ci.yml"), "\n")
+for _, pin in ipairs({ compiler_pins.minimum, compiler_pins.latest }) do
+  assert(#pin.linuxX64Sha256 == 64 and #pin.darwinArm64Sha256 == 64, "compiler archive checksums must be SHA-256 values")
+  assert(ci_workflow:find(pin.version, 1, true) and ci_workflow:find(pin.linuxX64Sha256, 1, true) and ci_workflow:find(pin.darwinArm64Sha256, 1, true), "CI compiler matrix must match the checked-in compatibility pins")
+end
 local parsed = parser.parse([[
 import ./math as Math
 type Maybe {
@@ -19,16 +31,66 @@ eq("Maybe.Some", parsed.symbols[3].name)
 assert(#parsed.diagnostics >= 1, "open proof should be diagnosed")
 eq("add", parser.identifier_at("def add x = x", 0, 5))
 assert(parser.code_only("def add x = x # comment"):match("^def add x = x%s+$"))
+local compiler_syntax = parser.parse("public def Math.add(x) = x\ntype Option is Data:\n  Some{}\n  Some{}\ndef run?() = 0")
+eq("Math.add", compiler_syntax.symbols[1].name, "public qualified declarations should parse")
+assert(compiler_syntax.diagnostics[1].message:match("Duplicate declaration 'Option.Some'"), "duplicate constructors should be diagnosed")
+assert(not compiler_syntax.diagnostics[#compiler_syntax.diagnostics].message:match("Open proof goal"), "the unsafe function suffix is not a proof hole")
 
 local root = vim.fn.tempname()
 vim.fn.mkdir(root .. "/.git", "p")
 vim.fn.writefile({ "def add x y = x + y" }, root .. "/math.bend")
 vim.fn.writefile({ "import ./math as Math", "def main = Math.add(1, 2)" }, root .. "/main.bend")
+vim.fn.mkdir(root .. "/.bend", "p")
+vim.fn.writefile({ "def stale = 0" }, root .. "/.bend/stale.bend")
 local workspace = require("bend2.workspace")
 local target = workspace.definition(root .. "/main.bend", 1, 18, root)
 eq(root .. "/math.bend", target and target.path, "qualified import definition should resolve")
 eq("add", target and target.symbol.name)
+eq({ root .. "/main.bend", root .. "/math.bend" }, workspace.files(root), "workspace scan should ignore generated Bend cache files")
+local refs = workspace.references(root .. "/main.bend", 1, 18, root)
+eq(2, #refs, "reference search should include the declaration and its qualified use")
+eq(root .. "/main.bend", refs[1].path)
+eq(16, refs[1].col, "qualified rename range should cover the member, not its import alias")
+vim.fn.writefile({ "def updated x = x" }, root .. "/math.bend")
+vim.fn.writefile({ "import ./math as Math", "def main = Math.updated(1)" }, root .. "/main.bend")
+workspace.refresh_path(root .. "/math.bend")
+workspace.refresh_path(root .. "/main.bend")
+local updated_target = workspace.definition(root .. "/main.bend", 1, 20, root)
+eq("updated", updated_target and updated_target.symbol.name, "cached workspace indexes should refresh saved or edited documents")
+vim.fn.writefile({ "def another x = x" }, root .. "/library.bend")
+workspace.refresh_path(root .. "/library.bend")
+local completion_buf = vim.api.nvim_create_buf(false, true)
+vim.api.nvim_buf_set_name(completion_buf, root .. "/main.bend")
+vim.api.nvim_buf_set_lines(completion_buf, 0, -1, false, { "import ./math as Math", "def main = Math.a" })
+vim.api.nvim_set_current_buf(completion_buf)
+vim.bo[completion_buf].filetype = "bend"
+vim.api.nvim_win_set_cursor(0, { 2, #"def main = Math.a" - 1 })
+eq(#"def main = Math.", require("bend2.editor").complete(1), "member completion should start after an imported module alias")
+local member_items, has_member = require("bend2.editor").complete(0, "up"), false
+for _, item in ipairs(member_items) do if item.word == "updated" then has_member = true end end
+assert(has_member, "imported module members should be included in omnifunc completions")
+require("bend2").options.auto_import = true
+vim.api.nvim_buf_set_lines(completion_buf, 0, -1, false, { "def main = Library.an" })
+vim.api.nvim_win_set_cursor(0, { 1, #"def main = Library.an" })
+local import_items, auto_import_item = require("bend2.editor").complete(0, "Library.an"), nil
+for _, item in ipairs(import_items) do if item.word == "Library.another" then auto_import_item = item end end
+assert(auto_import_item and auto_import_item.user_data, "auto-import completion should create a safe import edit")
+require("bend2").options.auto_import = false
+vim.api.nvim_buf_delete(completion_buf, { force = true })
 vim.fn.delete(root, "rf")
+
+local homonym_root = vim.fn.tempname()
+vim.fn.mkdir(homonym_root .. "/.git", "p")
+vim.fn.writefile({ "def helper() = 1" }, homonym_root .. "/lib.bend")
+vim.fn.writefile({ "def helper() = 2" }, homonym_root .. "/other.bend")
+vim.fn.writefile({ "import ./lib as Lib", "import ./other as Other", "def helper() = 3", "def main = Lib.helper() + Other.helper() + helper()", "# Lib.helper()" }, homonym_root .. "/main.bend")
+local lib_target = workspace.definition(homonym_root .. "/main.bend", 3, 14, homonym_root)
+eq(homonym_root .. "/lib.bend", lib_target and lib_target.path, "imported homonyms should resolve through their selected alias")
+local lib_refs = workspace.references(homonym_root .. "/main.bend", 3, 14, homonym_root)
+eq(2, #lib_refs, "references must exclude local and imported homonyms and comments")
+eq(homonym_root .. "/lib.bend", lib_refs[1].path)
+eq(homonym_root .. "/main.bend", lib_refs[2].path)
+vim.fn.delete(homonym_root, "rf")
 
 local fake_bend = vim.fn.tempname()
 vim.fn.writefile({
@@ -37,6 +99,7 @@ vim.fn.writefile({
   "  --version|version) echo 'Bend 2.0.32'; exit 0;;",
   "  guide) echo 'JavaScript target native executable --gpu'; exit 0;;",
   "esac",
+  "if [ \"$1\" = 'racing.bend' ]; then sleep 0.15; fi",
   "if [ \"$3\" = '--diagnostics=json' ]; then",
   "  printf '%s\\n' '{\"protocolVersion\":1,\"diagnostics\":[{\"file\":\"fake.bend\",\"range\":{\"start\":{\"line\":2,\"column\":3}},\"severity\":\"error\",\"message\":\"fixture error\"}]}'",
   "  exit 1",
@@ -45,18 +108,42 @@ vim.fn.writefile({
 }, fake_bend)
 vim.fn.setfperm(fake_bend, "rwxr-xr-x")
 require("bend2").setup({ cmd = fake_bend })
-for _, name in ipairs({ "Bend2Check", "Bend2CheckWorkspace", "Bend2Build", "Bend2Run", "Bend2Proofs", "Bend2ProofGoal", "Bend2ProbeBackend", "Bend2CompareBackends", "Bend2CompareProjectBackends", "Bend2Benchmark", "Bend2Environment", "Bend2Support", "Bend2TypeDefinition", "Bend2CallHierarchy" }) do
+for _, name in ipairs({ "Bend2Check", "Bend2CheckWorkspace", "Bend2Build", "Bend2Run", "Bend2RunProjectGate", "Bend2RunSabotage", "Bend2Proofs", "Bend2RefreshProofExplorer", "Bend2ProofGoal", "Bend2ProbeBackend", "Bend2CompareBackends", "Bend2CompareProjectBackends", "Bend2Benchmark", "Bend2Environment", "Bend2Support", "Bend2TypeDefinition", "Bend2CallHierarchy", "Bend2Cancel" }) do
   eq(2, vim.fn.exists(":" .. name), "public command " .. name .. " must be registered")
 end
 local toolchain, compiler_info = require("bend2.toolchain"), nil
 toolchain.discover(vim.fn.getcwd(), function(info) compiler_info = info end, true)
 assert(vim.wait(3000, function() return compiler_info ~= nil end), "compiler discovery callback timed out")
 eq("supported", compiler_info.compatibility)
+eq("supported", toolchain.backend_capability(compiler_info, "javascript"))
+eq("supported", toolchain.backend_capability(compiler_info, "native"))
+eq("supported", toolchain.backend_capability(compiler_info, "gpu"))
 local check_result
 toolchain.check("fake.bend", vim.fn.getcwd(), function(result) check_result = result end)
 assert(vim.wait(3000, function() return check_result ~= nil end), "compiler check callback timed out")
 eq("fixture error", check_result.diagnostics[1].message)
 eq(1, check_result.diagnostics[1].line)
+local unsupported_root = vim.fn.tempname()
+toolchain.cache[unsupported_root] = { available = true, version = "2.0.32", compatibility = "supported", capabilities = { native = "unsupported" } }
+local unsupported_probe
+toolchain.probe("unused.bend", unsupported_root, "native", function(result) unsupported_probe = result end)
+eq("unsupported", unsupported_probe.status, "backend probes should honor explicit compiler capability metadata")
+toolchain.cache[unsupported_root] = nil
+local validation_buf = vim.api.nvim_create_buf(true, false)
+vim.api.nvim_buf_set_lines(validation_buf, 0, -1, false, { "def open = ?TODO" })
+vim.api.nvim_buf_set_name(validation_buf, vim.fn.getcwd() .. "/validation.bend")
+vim.bo[validation_buf].filetype = "bend"
+assert(#vim.diagnostic.get(validation_buf) > 0, "parser diagnostics should initialize on Bend filetype")
+require("bend2").setup({ cmd = fake_bend, validation = "off" })
+eq(0, #vim.diagnostic.get(validation_buf), "validation=off should clear diagnostics from already-loaded buffers")
+vim.api.nvim_buf_delete(validation_buf, { force = true })
+require("bend2").setup({ cmd = fake_bend, validation = "on_save" })
+local old_check, new_check
+toolchain.check("racing.bend", vim.fn.getcwd(), function(result) old_check = result end)
+vim.defer_fn(function() toolchain.check("racing.bend", vim.fn.getcwd(), function(result) new_check = result end) end, 30)
+assert(vim.wait(3000, function() return old_check ~= nil and new_check ~= nil end, 10), "replacement check callbacks timed out")
+assert(old_check.cancelled, "superseded compiler checks should report cancellation")
+assert(not new_check.cancelled and new_check.code == 1, "cancelling an old check must not lose the new in-flight process")
 local parsed_diagnostics = toolchain.parse_diagnostics('{"diagnostics":[{"file":"fake.bend","range":{"start":{"line":2,"column":3}},"message":"fixture error","severity":"error"}]}', "fake.bend")
 eq(1, parsed_diagnostics[1].line)
 eq(2, parsed_diagnostics[1].col)
@@ -90,6 +177,14 @@ local gate_result
 toolchain.gate(gate_root, "check", function(result) gate_result = result end)
 assert(vim.wait(3000, function() return gate_result ~= nil end, 10), "gate process callback timed out")
 eq("gate-ok\n", gate_result.stdout, "gate runner should invoke bash directly")
+vim.fn.writefile({ "printf 'target:%s\\n' \"$1\"" }, gate_root .. "/scripts/check.sh")
+local target_gate
+toolchain.gate(gate_root, "check", function(result) target_gate = result end, "subproject")
+assert(vim.wait(3000, function() return target_gate ~= nil end, 10), "target gate process callback timed out")
+eq("target:subproject\n", target_gate.stdout, "gate runner should pass a safe workspace-relative target")
+local unsafe_gate
+toolchain.gate(gate_root, "check", function(result) unsafe_gate = result end, "../outside")
+assert(unsafe_gate and unsafe_gate.code == nil and unsafe_gate.stderr:match("inside the Bend 2 workspace"), "gate runner must reject workspace traversal")
 vim.fn.delete(gate_root, "rf")
 
 require("bend2").setup({ cmd = { "/bin/sleep" } })
@@ -113,11 +208,23 @@ local reviewed = proof.allowlist("# approved entries\nnormalize\n")
 assert(reviewed.normalize and not reviewed.other)
 
 local formatter = require("bend2.formatter")
-eq("def add x y = x + y\n", formatter.format("def add x y=x+y\n"), "formatter should normalize operator spacing")
+eq("def add x y = x +y\n", formatter.format("def add x y=x+y\n"), "formatter should match the upstream formatter's operator rules")
 eq("# comment\n", formatter.format("# comment\n"), "formatter should preserve comment-only lines")
 eq("def negate x = -x\n", formatter.format("def negate x=-x\n"), "formatter should preserve unary operators")
 eq("@unsafe\n", formatter.format("@unsafe\n"), "formatter should not split annotations")
+eq("def add(x: Nat) -> Nat:\r\n  # keep this comment\r\n  x + 1n", formatter.format("def  add(x:Nat)->Nat:\r\n    # keep this comment\r\n    x+1n", { tabSize = 2, insertSpaces = true }), "formatter should preserve line endings and official spacing rules")
+eq("def tuple = Pair <a, b>\n", formatter.format("def tuple=Pair <a,b>\n"), "formatter should preserve generic angle spacing")
+eq('def broken():\n  "unterminated', formatter.format('def broken():\n  "unterminated'), "formatter must leave incomplete literals untouched")
 local once = formatter.format("def add x y=x+y\n")
 eq(once, formatter.format(once), "formatter should be idempotent")
+
+local signature = require("bend2.signature")
+local nested_call = signature.call_context("def main():\n  calculate(first(1, 2), \n    nested(value, more))\n", 2, 18)
+eq({ name = "nested", line = 2, character = 4, active_parameter = 1 }, nested_call, "signature help should follow nested calls across lines")
+eq(nil, signature.call_context('def main():\n  "fake(1, 2)"\n', 1, 13), "signature help should ignore calls inside literals")
+eq(nil, signature.call_context("def main():\n  # fake(1, 2)\n", 1, 15), "signature help should ignore calls inside comments")
+local parsed_signature = signature.parse("combine", "def combine(left: Nat, pair: Pair(Nat, Nat)):")
+eq("combine(left: Nat, pair: Pair(Nat, Nat))", parsed_signature.label)
+eq({ "left: Nat", "pair: Pair(Nat, Nat)" }, parsed_signature.parameters)
 
 print("Bend2 Neovim unit checks passed")

@@ -107,23 +107,23 @@ local function display(entries)
   return lines
 end
 
-function M.open_explorer()
-  local root = workspace.root(vim.api.nvim_get_current_buf(), require("bend2").options)
+local function update_explorer(buf, root)
   local entries = law_entries(root)
   for _, entry in ipairs(entries) do entry.root = root end
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_name(buf, "Bend2Proofs")
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, display(entries))
-  vim.bo[buf].buftype, vim.bo[buf].bufhidden, vim.bo[buf].modifiable, vim.bo[buf].filetype = "nofile", "wipe", false, "bend2proofs"
-  vim.cmd("botright split")
-  vim.api.nvim_win_set_buf(0, buf)
+  local generation = (vim.b[buf].bend2_proof_generation or 0) + 1
+  vim.b[buf].bend2_proof_generation = generation
+  vim.b[buf].bend2_proof_root = root
   vim.b[buf].bend2_proof_entries = entries
+  vim.bo[buf].modifiable = true
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, display(entries))
+  vim.bo[buf].modifiable = false
   local checked = {}
   for _, entry in ipairs(entries) do
     if not checked[entry.proof_path] and vim.fn.filereadable(entry.proof_path) == 1 then
       checked[entry.proof_path] = true
       require("bend2.toolchain").check(entry.proof_path, root, function(result)
-        if not result.compiler or not result.compiler.available or not vim.api.nvim_buf_is_valid(buf) then return end
+        if not result.compiler or not result.compiler.available or result.cancelled or result.timed_out or not vim.api.nvim_buf_is_valid(buf) then return end
+        if vim.b[buf].bend2_proof_generation ~= generation then return end
         local compiler_status = result.code == 0 and "passed" or "failed"
         for _, law in ipairs(entries) do
           if law.proof_path == entry.proof_path then law.status = M.status(law.proof_source, law.name, compiler_status, true) end
@@ -135,12 +135,48 @@ function M.open_explorer()
       end)
     end
   end
+end
+
+function M.open_explorer()
+  local root = workspace.root(vim.api.nvim_get_current_buf(), require("bend2").options)
+  local buf = vim.fn.bufnr("Bend2Proofs")
+  if buf <= 0 or not vim.api.nvim_buf_is_valid(buf) then
+    buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_name(buf, "Bend2Proofs")
+    vim.bo[buf].buftype, vim.bo[buf].bufhidden, vim.bo[buf].filetype = "nofile", "wipe", "bend2proofs"
+  end
+  update_explorer(buf, root)
+  local win = vim.fn.bufwinid(buf)
+  if win < 0 then
+    vim.cmd("botright split")
+    vim.api.nvim_win_set_buf(0, buf)
+  else
+    vim.api.nvim_set_current_win(win)
+  end
   vim.keymap.set("n", "<CR>", function()
     local item = vim.b[buf].bend2_proof_entries[vim.api.nvim_win_get_cursor(0)[1] - 3]
     if not item then return end
     vim.cmd.edit(vim.fn.fnameescape(item.law_path))
     vim.api.nvim_win_set_cursor(0, { item.line + 1, 0 })
   end, { buffer = buf, desc = "Open Bend 2 law" })
+  vim.keymap.set("n", "o", M.open_proof, { buffer = buf, desc = "Open Bend 2 proof" })
+  vim.keymap.set("n", "d", M.details, { buffer = buf, desc = "Show Bend 2 proof details" })
+  vim.keymap.set("n", "g", M.goal_command, { buffer = buf, desc = "Jump to Bend 2 proof goal" })
+  vim.keymap.set("n", "c", M.check_proof, { buffer = buf, desc = "Check Bend 2 proof" })
+  vim.keymap.set("n", "r", M.refresh_explorer, { buffer = buf, desc = "Refresh Bend 2 Proof Explorer" })
+end
+
+function M.refresh_explorer()
+  local buf = vim.api.nvim_get_current_buf()
+  if vim.bo[buf].filetype ~= "bend2proofs" then
+    buf = vim.fn.bufnr("Bend2Proofs")
+    if buf <= 0 or not vim.api.nvim_buf_is_valid(buf) then M.open_explorer(); return end
+  end
+  local root = vim.b[buf].bend2_proof_root
+  if not root then M.open_explorer(); return end
+  update_explorer(buf, root)
+  local win = vim.fn.bufwinid(buf)
+  if win >= 0 then vim.api.nvim_set_current_win(win) end
 end
 
 function M.current_entry()
@@ -201,14 +237,21 @@ function M.check_proof()
 end
 
 function M.review_changes()
-  local entry = M.current_entry()
-  local path = entry and entry.law_path or vim.api.nvim_buf_get_name(0)
-  if not path:match("LAWS%.bend$") then vim.notify("Open a LAWS.bend file or select a law.", vim.log.levels.WARN); return end
-  local root = entry and entry.root or workspace.root(vim.api.nvim_get_current_buf(), require("bend2").options)
-  local relative = vim.fs.relpath(root, path) or path
-  require("bend2.toolchain").run_binary("git", { "diff", "--", relative }, root, function(result)
-    require("bend2.editor").output("Bend 2 law changes (review only)", result)
-  end, 30000)
+  local root = workspace.root(vim.api.nvim_get_current_buf(), require("bend2").options)
+  local paths = {}
+  for _, path in ipairs(workspace.files(root)) do if vim.fs.basename(path) == "LAWS.bend" then paths[#paths + 1] = path end end
+  if #paths == 0 then vim.notify("No LAWS.bend files were found in this workspace.", vim.log.levels.INFO); return end
+  local function diff(path)
+    local relative = vim.fs.relpath(root, path) or path
+    require("bend2.toolchain").run_binary("git", { "diff", "--no-ext-diff", "--unified=80", "HEAD", "--", relative }, root, function(result)
+      if result.code == 0 and result.stdout == "" then result.stdout = relative .. ": no changes relative to HEAD.\n" end
+      require("bend2.editor").output("Bend 2 law changes (review only): " .. relative, result)
+    end, 30000)
+  end
+  if #paths == 1 then diff(paths[1]); return end
+  vim.ui.select(paths, { prompt = "Choose a LAWS.bend file to compare with HEAD", format_item = function(path) return vim.fs.relpath(root, path) or path end }, function(path)
+    if path then diff(path) end
+  end)
 end
 
 return M

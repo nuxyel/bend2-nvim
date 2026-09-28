@@ -8,6 +8,17 @@ local function cursor_context()
   return buf, vim.api.nvim_buf_get_name(buf), cursor[1] - 1, cursor[2]
 end
 
+local function verify_backend(root, profile, callback)
+  local toolchain = require("bend2.toolchain")
+  toolchain.discover(root, function(info)
+    if not info.available then vim.notify(info.error or "Bend 2 compiler is unavailable.", vim.log.levels.ERROR, { title = "Bend 2" }); return end
+    local capability = toolchain.backend_capability(info, profile)
+    if capability == "unsupported" then vim.notify("The active Bend compiler does not advertise the " .. profile .. " backend.", vim.log.levels.ERROR, { title = "Bend 2" }); return end
+    if capability == "unknown" then vim.notify("The compiler did not report " .. profile .. " capability metadata; continuing and letting Bend decide.", vim.log.levels.WARN, { title = "Bend 2" }) end
+    callback(info)
+  end)
+end
+
 function M.set_diagnostics(buf, parsed)
   local items = {}
   for _, diagnostic in ipairs(parsed.diagnostics) do
@@ -94,7 +105,9 @@ end
 
 function M.check_workspace()
   local buf = vim.api.nvim_get_current_buf()
-  local root, files = workspace.root(buf, require("bend2").options), workspace.files(workspace.root(buf, require("bend2").options))
+  local root = workspace.root(buf, require("bend2").options)
+  local files = workspace.proof_files(root)
+  if #files == 0 then vim.notify("No PROOF.bend suites were found in this workspace.", vim.log.levels.INFO); return end
   local index, failed, output = 1, 0, {}
   local function next_file()
     local path = files[index]
@@ -103,6 +116,11 @@ function M.check_workspace()
       return
     end
     require("bend2.toolchain").check(path, root, function(result)
+      if result.cancelled then
+        output[#output + 1] = path .. ": CANCELLED"
+        M.output("Bend 2 workspace check", { code = nil, stdout = table.concat(output, "\n"), stderr = "Workspace proof check cancelled." })
+        return
+      end
       if result.code ~= 0 then failed = failed + 1 end
       output[#output + 1] = path .. ": " .. (result.code == 0 and "PASS" or "FAIL")
       if result.stderr and result.stderr ~= "" then output[#output + 1] = result.stderr end
@@ -120,11 +138,15 @@ function M.build()
   if path == "" then vim.notify("Save the Bend 2 buffer before building it.", vim.log.levels.WARN); return end
   vim.ui.select({ "JavaScript source", "Native executable", "Native executable (GPU-capable)" }, { prompt = "Bend 2 build profile" }, function(profile)
     if not profile then return end
-    local suffix = profile == "JavaScript source" and ".js" or (vim.fn.has("win32") == 1 and ".exe" or "")
-    local default = vim.fn.fnamemodify(path, ":r") .. suffix
-    vim.ui.input({ prompt = "Bend 2 output file: ", default = default }, function(output)
-    if not output or output == "" then return end
-      require("bend2.toolchain").build(path, output, workspace.root(buf, require("bend2").options), function(result) M.output("Bend 2 build (" .. profile .. ")", result) end)
+    local root = workspace.root(buf, require("bend2").options)
+    local backend = profile == "JavaScript source" and "javascript" or profile == "Native executable" and "native" or "gpu"
+    verify_backend(root, backend, function()
+      local suffix = backend == "javascript" and ".js" or (vim.fn.has("win32") == 1 and ".exe" or "")
+      local default = vim.fn.fnamemodify(path, ":r") .. suffix
+      vim.ui.input({ prompt = "Bend 2 output file: ", default = default }, function(output)
+        if not output or output == "" then return end
+        require("bend2.toolchain").build(path, output, root, function(result) M.output("Bend 2 build (" .. profile .. ")", result) end)
+      end)
     end)
   end)
 end
@@ -157,7 +179,7 @@ function M.show_version()
   local buf = vim.api.nvim_get_current_buf()
   local root = workspace.root(buf, require("bend2").options)
   require("bend2.toolchain").discover(root, function(info)
-    M.output("Bend 2 compiler", { code = info.available and 0 or nil, stdout = "Version: " .. tostring(info.version or "unavailable") .. "\nCompatibility: " .. info.compatibility, stderr = info.error or "" })
+    M.output("Bend 2 Neovim plugin and compiler", { code = info.available and 0 or nil, stdout = "Plugin version: " .. require("bend2").version .. "\nCompiler version: " .. tostring(info.version or "unavailable") .. "\nCompatibility: " .. info.compatibility, stderr = info.error or "" })
   end, true)
 end
 
@@ -168,7 +190,10 @@ end
 
 function M.gate(kind)
   local root = workspace.root(vim.api.nvim_get_current_buf(), require("bend2").options)
-  require("bend2.toolchain").gate(root, kind, function(result) M.output("Bend 2 " .. kind .. " gate", result) end)
+  vim.ui.input({ prompt = "Optional target directory relative to the workspace (empty for script default)" }, function(target)
+    if target == nil then return end
+    require("bend2.toolchain").gate(root, kind, function(result) M.output("Bend 2 " .. kind .. " gate", result) end, target)
+  end)
 end
 
 function M.probe_backend()
@@ -176,9 +201,18 @@ function M.probe_backend()
   if path == "" then vim.notify("Save the Bend 2 buffer before probing it.", vim.log.levels.WARN); return end
   vim.ui.select({ "javascript", "native", "gpu" }, { prompt = "Bend 2 backend to probe" }, function(profile)
     if not profile then return end
-    require("bend2.toolchain").probe(path, workspace.root(buf, require("bend2").options), profile, function(result)
-      M.output("Bend 2 " .. profile .. " probe: " .. result.status, result.result or { code = nil, stderr = result.compiler and result.compiler.error or result.status })
-    end)
+    local function probe()
+      require("bend2.toolchain").probe(path, workspace.root(buf, require("bend2").options), profile, function(result)
+        M.output("Bend 2 " .. profile .. " probe: " .. result.status, result.result or { code = nil, stderr = result.error or (result.compiler and result.compiler.error) or result.status })
+      end)
+    end
+    if profile == "gpu" then
+      vim.ui.select({ "Cancel", "Run GPU probe" }, { prompt = "This probe will execute the current Bend program on the active GPU. Continue?" }, function(choice)
+        if choice == "Run GPU probe" then probe() end
+      end)
+      return
+    end
+    probe()
   end)
 end
 
@@ -256,8 +290,10 @@ function M.benchmark()
             local report_dir = vim.fs.joinpath(root, ".bend", "benchmarks")
             vim.fn.mkdir(report_dir, "p")
             local report = vim.fs.joinpath(report_dir, "bend2-" .. os.date("%Y%m%d-%H%M%S") .. ".json")
-            local record = { schemaVersion = 1, generatedAt = os.date("!%Y-%m-%dT%H:%M:%SZ"), file = vim.fs.relpath(root, path), requestedThreads = threads, gpu = gpu, runs = tonumber(run_text), results = results }
-            vim.fn.writefile({ vim.json.encode(record) }, report)
+            local version = vim.version()
+            local record = { schemaVersion = 1, generatedAt = os.date("!%Y-%m-%dT%H:%M:%SZ"), pluginVersion = require("bend2").version, nvimVersion = version.major .. "." .. version.minor .. "." .. version.patch, host = { os = vim.uv.os_uname().sysname, arch = vim.uv.os_uname().machine }, file = vim.fs.relpath(root, path), requestedThreads = threads, gpu = gpu, runs = tonumber(run_text), results = results }
+            local report_ok, report_result = pcall(vim.fn.writefile, { vim.json.encode(record) }, report)
+            local report_written = report_ok and report_result == 0
             local lines = { "Compiler: " .. tostring(results[1] and results[1].compiler and results[1].compiler.version or "unknown"), "GPU: " .. gpu, "Warm-up: discarded", "Runs: " .. run_text }
             for _, result in ipairs(results) do
               if result.ok then
@@ -265,10 +301,11 @@ function M.benchmark()
                 lines[#lines + 1] = "  samples_ms: " .. vim.inspect(result.samples_ms)
               else lines[#lines + 1] = "threads=" .. tostring(result.threads or count) .. ": failed: " .. tostring(result.error) end
             end
-            lines[#lines + 1] = "JSON report: " .. report
+            lines[#lines + 1] = report_written and ("JSON report: " .. report) or "JSON report could not be written."
             local successful = #results > 0
             for _, result in ipairs(results) do successful = successful and result.ok and result.outputs_match end
-            M.output("Bend 2 benchmark", { code = successful and 0 or 1, stdout = table.concat(lines, "\n"), stderr = successful and "" or "One or more benchmark configurations failed or produced unstable output." })
+            successful = successful and report_written
+            M.output("Bend 2 benchmark", { code = successful and 0 or 1, stdout = table.concat(lines, "\n"), stderr = successful and "" or "A benchmark configuration failed, produced unstable output, or its report could not be written." })
             return
           end
           require("bend2.toolchain").benchmark(path, root, run_text, function(result)
@@ -296,7 +333,9 @@ function M.support()
   local root = workspace.root(buf, require("bend2").options)
   require("bend2.toolchain").discover(root, function(info)
     local uname = vim.uv.os_uname()
-    local report = table.concat({ "Bend2.nvim: 0.1.0", "Neovim: " .. vim.version().major .. "." .. vim.version().minor .. "." .. vim.version().patch, "Host: " .. uname.sysname .. " " .. uname.release .. " " .. uname.machine, "Workspace: " .. root, "Compiler: " .. tostring(info.version or "unavailable"), "Compiler compatibility: " .. info.compatibility, "Compiler available: " .. tostring(info.available) }, "\n")
+    local version = vim.version()
+    local options = require("bend2").options
+    local report = table.concat({ "Schema version: 1", "Bend2.nvim: " .. require("bend2").version, "Neovim: " .. version.major .. "." .. version.minor .. "." .. version.patch, "Host: " .. uname.sysname .. " " .. uname.machine, "Workspace open: " .. tostring(root ~= ""), "Compiler: " .. tostring(info.version or "unavailable"), "Compiler compatibility: " .. info.compatibility, "Compiler available: " .. tostring(info.available), "Validation: " .. options.validation, "Diagnostics mode: " .. options.diagnostics_mode, "Auto-import: " .. tostring(options.auto_import), "Formatter: " .. tostring(options.formatter) }, "\n")
     local copied = pcall(vim.fn.setreg, "+", report)
     M.output(copied and "Bend 2 support report (copied to clipboard)" or "Bend 2 support report", { code = 0, stdout = report, stderr = copied and "" or "Clipboard unavailable; copy the report from this buffer." })
   end)
@@ -392,10 +431,27 @@ end
 function M.rename(new_name)
   local buf, path, row, col = cursor_context()
   local name = parser.identifier_at(table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n"), row, col)
-  if not name or not new_name:match("^[A-Za-z_][A-Za-z0-9_]*$") then error("Bend 2 rename requires an identifier and a valid new name") end
-  local refs = workspace.references(path, row, col, workspace.root(buf, require("bend2").options))
+  if not name or not new_name:match("^[A-Za-z_][A-Za-z0-9_]*$") then vim.notify("Bend 2 rename needs an identifier and a valid new name.", vim.log.levels.ERROR); return end
+  local root = workspace.root(buf, require("bend2").options)
+  local target = workspace.definition(path, row, col, root)
+  if not target then vim.notify("Bend 2 rename could not resolve a declaration at the cursor.", vim.log.levels.WARN); return end
+  local old_name = target.symbol.name:match("([^%.]+)$") or target.symbol.name
+  if old_name == new_name then return end
+  local refs = workspace.references(path, row, col, root)
   local by_file = {}
   for _, item in ipairs(refs) do by_file[item.path] = by_file[item.path] or {}; by_file[item.path][#by_file[item.path] + 1] = item end
+  local target_start = target.symbol.selectionRange.start
+  for file in pairs(by_file) do
+    local doc = workspace.document(file)
+    for _, symbol in ipairs(doc and doc.parsed.symbols or {}) do
+      local selection = symbol.selectionRange.start
+      local same_target = vim.fs.normalize(file) == vim.fs.normalize(target.path) and selection.line == target_start.line and selection.character == target_start.character
+      if symbol.kind ~= "import" and not same_target and (symbol.name:match("([^%.]+)$") or symbol.name) == new_name then
+        vim.notify("Bend 2 rename would collide with an existing declaration '" .. new_name .. "'.", vim.log.levels.ERROR)
+        return
+      end
+    end
+  end
   for file, items in pairs(by_file) do
     local target_buf = vim.fn.bufadd(file)
     vim.fn.bufload(target_buf)
@@ -404,6 +460,7 @@ function M.rename(new_name)
       vim.api.nvim_buf_set_text(target_buf, item.row, item.col, item.row, item.col + #item.name, { new_name })
     end
   end
+  workspace.invalidate()
 end
 
 function M.hover()
@@ -429,32 +486,59 @@ function M.format()
   if formatted ~= source then vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(formatted, "\n", { plain = true })) end
 end
 
-function M.format_expr()
-  M.format()
-  return 0
-end
-
 function M.complete(findstart, base)
   local buf = vim.api.nvim_get_current_buf()
   if findstart == 1 then
     local line = vim.api.nvim_get_current_line()
-    return (line:sub(1, vim.fn.col(".") - 1):match("[%w_]+$") or ""):len() > 0 and (vim.fn.col(".") - 1 - #(line:sub(1, vim.fn.col(".") - 1):match("[%w_]+$") or "")) or -2
+    local before = line:sub(1, vim.fn.col(".") - 1)
+    local prefix = before:match("([A-Za-z0-9_.]+)$")
+    if prefix and prefix:find(".", 1, true) then
+      local alias, member = prefix:match("^([A-Za-z_][A-Za-z0-9_]*)%.([A-Za-z0-9_.]*)$")
+      if alias then
+        local path = vim.api.nvim_buf_get_name(buf)
+        local source = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+        local imported = false
+        for _, item in ipairs(parser.parse(source, path).imports) do if item.alias == alias then imported = true; break end end
+        if imported then return vim.fn.col(".") - 1 - #member end
+        if require("bend2").options.auto_import then return vim.fn.col(".") - 1 - #prefix end
+        return vim.fn.col(".") - 1 - #member
+      end
+    end
+    local word = before:match("[%w_]+$")
+    return word and vim.fn.col(".") - 1 - #word or -2
   end
   local path = vim.api.nvim_buf_get_name(buf)
   local root = workspace.root(buf, require("bend2").options)
-  local parsed = parser.parse(table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n"), path)
-  local names = { "def", "law", "type", "import", "match", "case", "return", "Nat", "IO", "Bool", "True", "False" }
-  local auto_imports = {}
-  for _, doc in ipairs(workspace.symbols(root)) do for _, symbol in ipairs(doc.parsed.symbols) do names[#names + 1] = symbol.name end end
+  local source = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+  local parsed = parser.parse(source, path)
+  local names = { "def", "law", "type", "is", "import", "as", "public", "private", "match", "case", "return", "do", "for", "exs", "where", "let", "if", "Nat", "U8", "U16", "U32", "U64", "U128", "IO", "Bool", "String", "Char", "F32", "F64", "True", "False", "Type", "Data", "Pair", "Option", "Result", "List", "Array", "Map", "Some", "None" }
+  local docs, imported_paths = workspace.symbols(root), {}
+  for _, item in ipairs(parsed.imports) do if item.resolvedPath then imported_paths[vim.fs.normalize(item.resolvedPath)] = true end end
+  for _, doc in ipairs(docs) do for _, symbol in ipairs(doc.parsed.symbols) do if symbol.kind ~= "import" then names[#names + 1] = symbol.name end end end
   for word in pairs(parsed.words) do names[#names + 1] = word end
   local seen, out = {}, {}
   for _, name in ipairs(names) do if name:find(base, 1, true) == 1 and not seen[name] then seen[name] = true; out[#out + 1] = { word = name, menu = "Bend 2" } end end
   if require("bend2").options.auto_import then
-    for _, doc in ipairs(workspace.symbols(root)) do
-      if doc.path ~= path then
+    local used_aliases = vim.deepcopy(parsed.words)
+    for _, item in ipairs(parsed.imports) do used_aliases[item.alias] = true end
+    local requested_alias = base:match("^([A-Za-z_][A-Za-z0-9_]*)%.")
+    local alias_imported = false
+    for _, item in ipairs(parsed.imports) do if item.alias == requested_alias then alias_imported = true; break end end
+    if requested_alias and not alias_imported then
+      local occurrences = 0
+      for word in source:gmatch("[A-Za-z_][A-Za-z0-9_]*") do
+        if word == requested_alias then occurrences = occurrences + 1 end
+      end
+      if occurrences == 1 then used_aliases[requested_alias] = nil end
+    end
+    for _, doc in ipairs(docs) do
+      if doc.path ~= path and not imported_paths[vim.fs.normalize(doc.path)] then
         local alias = vim.fs.basename(doc.path):gsub("%.bend$", "")
         if alias:lower() == "main" then alias = vim.fs.basename(vim.fs.dirname(doc.path)) end
         alias = alias:sub(1, 1):upper() .. alias:sub(2):gsub("[^A-Za-z0-9_]", "_")
+        local original, suffix = alias, 2
+        while used_aliases[alias] do alias, suffix = original .. suffix, suffix + 1 end
+        used_aliases[alias] = true
         for _, symbol in ipairs(doc.parsed.symbols) do
           if symbol.kind ~= "import" then
             local short = symbol.name:match("([^%.]+)$") or symbol.name
@@ -482,7 +566,11 @@ function M.complete_done()
   local buf = vim.api.nvim_get_current_buf()
   local source = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
   if source:match("import%s+" .. vim.pesc(details.path) .. "%s+as%s+" .. vim.pesc(details.alias)) then return end
-  vim.api.nvim_buf_set_lines(buf, 0, 0, false, { "import " .. details.path .. " as " .. details.alias })
+  local insert_at, lines = 0, vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  for index, line in ipairs(lines) do
+    if line:match("^%s*#") or line:match("^%s*import%s+") or line:match("^%s*$") then insert_at = index else break end
+  end
+  vim.api.nvim_buf_set_lines(buf, insert_at, insert_at, false, { "import " .. details.path .. " as " .. details.alias })
 end
 
 function M.insert_snippet()
@@ -504,16 +592,29 @@ end
 
 function M.signature()
   local buf, path, row, col = cursor_context()
-  local line = vim.api.nvim_get_current_line():sub(1, col)
-  local name = line:match("([A-Za-z_][A-Za-z0-9_.]*)%s*%(")
-  if not name then return end
+  local source = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+  local context = require("bend2.signature").call_context(source, row, col)
+  if not context then vim.notify("No Bend 2 call signature at the cursor.", vim.log.levels.INFO); return end
   local root = workspace.root(buf, require("bend2").options)
-  for _, doc in ipairs(workspace.symbols(root)) do
-    for _, symbol in ipairs(doc.parsed.symbols) do
-      if symbol.name == name or symbol.name:match("%.([^%.]+)$") == name then
-        local source_line = vim.split(doc.source, "\n", { plain = true })[symbol.range.start.line + 1] or ""
-        vim.lsp.util.open_floating_preview({ source_line }, "bend", { border = "rounded", focusable = false })
-        return
+  local target = workspace.definition(path, context.line, context.character, root)
+  if not target or (target.symbol.kind ~= "function" and target.symbol.kind ~= "law") then
+    vim.notify("Bend 2 signature is unavailable for this call.", vim.log.levels.INFO)
+    return
+  end
+  local doc = workspace.document(target.path)
+  if not doc then return end
+  local source_line = vim.split(doc.source, "\n", { plain = true })[target.symbol.range.start.line + 1] or ""
+  local parsed = require("bend2.signature").parse(target.symbol.name, source_line)
+  if not parsed then vim.lsp.util.open_floating_preview({ source_line }, "bend", { border = "rounded", focusable = false }); return end
+  local preview, win = vim.lsp.util.open_floating_preview({ parsed.label }, "bend", { border = "rounded", focusable = false })
+  local parameter = parsed.parameters[context.active_parameter + 1]
+  if preview and win and parameter then
+    local first = #target.symbol.name + 1
+    for index, item in ipairs(parsed.parameters) do
+      local start = parsed.label:find(item, first, true)
+      if start then
+        if index == context.active_parameter + 1 then vim.api.nvim_buf_add_highlight(preview, "LspSignatureActiveParameter", 0, start - 1, start + #item - 1); break end
+        first = start + #item + 1
       end
     end
   end
