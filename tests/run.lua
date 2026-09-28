@@ -90,7 +90,7 @@ vim.fn.writefile({ "gitdir: ../.git/worktrees/repo" }, worktree_root .. "/.git")
 vim.fn.writefile({ "def main = 0" }, worktree_root .. "/nested/main.bend")
 local worktree_buf = vim.api.nvim_create_buf(false, true)
 vim.api.nvim_buf_set_name(worktree_buf, worktree_root .. "/nested/main.bend")
-eq(worktree_root, workspace.root(worktree_buf, { root_markers = { ".git" } }), "workspace root detection should accept .git files used by linked worktrees")
+eq(vim.uv.fs_realpath(worktree_root), workspace.root(worktree_buf, { root_markers = { ".git" } }), "workspace root detection should accept .git files used by linked worktrees")
 vim.api.nvim_buf_delete(worktree_buf, { force = true })
 vim.fn.delete(worktree_parent, "rf")
 
