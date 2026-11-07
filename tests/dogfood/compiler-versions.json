@@ -5,8 +5,8 @@
     "darwinArm64Sha256": "b7f6cece79523ff1bb66a2754073f607683015982028111eee2149114dbdb847"
   },
   "latest": {
-    "version": "2.0.32",
-    "linuxX64Sha256": "5c365ddb12954d0933cef751802e0f7d9875f842edcb80f9661f89cd1a9ff7b6",
-    "darwinArm64Sha256": "d7debc002f59264f648dc94e45c2a9fab23e4b1ee0a390bf2acd8b1673e0cf55"
+    "version": "2.0.40",
+    "linuxX64Sha256": "c9ff8d67bd903fb6ad9a26b43d8a62c01021de82a44d55ce4a3dcd4732113d6b",
+    "darwinArm64Sha256": "b2be003b041eb6cfc65326be18f79eb2e0bae2189be79a18c507e661b4b6900b"
   }
 }

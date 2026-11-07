@@ -54,9 +54,9 @@ jobs:
             sha256: 22bb6d5f6bce8ae2c5b340371fedddcbd90edc07a48b6e2b351a944c4558a3eb
           - os: ubuntu-24.04
             nvim: "0.11.7"
-            bend: "2.0.32"
-            archive: bend-2.0.32-linux-x64.tar.gz
-            sha256: 5c365ddb12954d0933cef751802e0f7d9875f842edcb80f9661f89cd1a9ff7b6
+            bend: "2.0.40"
+            archive: bend-2.0.40-linux-x64.tar.gz
+            sha256: c9ff8d67bd903fb6ad9a26b43d8a62c01021de82a44d55ce4a3dcd4732113d6b
           - os: ubuntu-24.04
             nvim: "0.12.5"
             bend: "2.0.28"
@@ -64,9 +64,9 @@ jobs:
             sha256: 22bb6d5f6bce8ae2c5b340371fedddcbd90edc07a48b6e2b351a944c4558a3eb
           - os: ubuntu-24.04
             nvim: "0.12.5"
-            bend: "2.0.32"
-            archive: bend-2.0.32-linux-x64.tar.gz
-            sha256: 5c365ddb12954d0933cef751802e0f7d9875f842edcb80f9661f89cd1a9ff7b6
+            bend: "2.0.40"
+            archive: bend-2.0.40-linux-x64.tar.gz
+            sha256: c9ff8d67bd903fb6ad9a26b43d8a62c01021de82a44d55ce4a3dcd4732113d6b
           - os: macos-14
             nvim: "0.11.7"
             bend: "2.0.28"
@@ -74,9 +74,9 @@ jobs:
             sha256: b7f6cece79523ff1bb66a2754073f607683015982028111eee2149114dbdb847
           - os: macos-14
             nvim: "0.11.7"
-            bend: "2.0.32"
-            archive: bend-2.0.32-darwin-arm64.tar.gz
-            sha256: d7debc002f59264f648dc94e45c2a9fab23e4b1ee0a390bf2acd8b1673e0cf55
+            bend: "2.0.40"
+            archive: bend-2.0.40-darwin-arm64.tar.gz
+            sha256: b2be003b041eb6cfc65326be18f79eb2e0bae2189be79a18c507e661b4b6900b
           - os: macos-14
             nvim: "0.12.5"
             bend: "2.0.28"
@@ -84,9 +84,9 @@ jobs:
             sha256: b7f6cece79523ff1bb66a2754073f607683015982028111eee2149114dbdb847
           - os: macos-14
             nvim: "0.12.5"
-            bend: "2.0.32"
-            archive: bend-2.0.32-darwin-arm64.tar.gz
-            sha256: d7debc002f59264f648dc94e45c2a9fab23e4b1ee0a390bf2acd8b1673e0cf55
+            bend: "2.0.40"
+            archive: bend-2.0.40-darwin-arm64.tar.gz
+            sha256: b2be003b041eb6cfc65326be18f79eb2e0bae2189be79a18c507e661b4b6900b
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
