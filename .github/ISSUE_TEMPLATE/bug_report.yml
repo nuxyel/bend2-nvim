@@ -23,7 +23,7 @@ body:
     attributes:
       label: Bend version
       description: Enter "not installed" if the compiler is unavailable.
-      placeholder: Bend 2.0.32
+      placeholder: Bend 2.0.40
     validations:
       required: true
   - type: dropdown

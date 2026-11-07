@@ -4,7 +4,7 @@
 
 - Neovim 0.11 or newer.
 - LuaJIT (provided by standard Neovim builds).
-- Bend 2.0.28 and 2.0.32 for compiler dogfood.
+- Bend 2.0.28 and 2.0.40 for compiler dogfood.
 - Node.js is not required by the plugin.
 
 ## Checks
@@ -12,14 +12,14 @@
 ```sh
 nvim --headless -u NONE -l tests/run.lua
 BEND2_BIN=/path/to/bend BEND_DOGFOOD_VERSION=2.0.28 nvim --headless -u NONE -l tests/dogfood.lua
-BEND2_BIN=/path/to/bend BEND_DOGFOOD_VERSION=2.0.32 nvim --headless -u NONE -l tests/dogfood.lua
+BEND2_BIN=/path/to/bend BEND_DOGFOOD_VERSION=2.0.40 nvim --headless -u NONE -l tests/dogfood.lua
 ```
 
 Tests run inside Neovim and do not require Node or third-party Lua packages.
 Dogfood needs the `bend` compiler on PATH.
 
 CI covers Neovim 0.11.7 and 0.12.5 on Linux x86-64 and macOS arm64, and Bend
-2.0.28/2.0.32 on both hosts. Windows users are supported through WSL and use
+2.0.28/2.0.40 on both hosts. Windows users are supported through WSL and use
 the Linux test path.
 
 The formatter in `lua/bend2/formatter.lua` is a Lua port of the official

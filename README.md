@@ -65,7 +65,7 @@ The [proof workflow example](examples/proof-workflow/) is also the project used 
 ## Compatibility and support
 
 - Neovim 0.11 and newer; CI covers 0.11.7 and 0.12.5 on Linux x86-64 and macOS arm64.
-- Bend 2.0.28 and newer for compiler-backed features; CI verifies Bend 2.0.28 and 2.0.32.
+- Bend 2.0.28 and newer for compiler-backed features; CI verifies Bend 2.0.28 and 2.0.40.
 - Windows users can run Neovim and Bend under WSL.
 
 See [support notes](docs/SUPPORT.md), [development guide](docs/DEVELOPMENT.md), [differential checks](docs/DIFFERENTIAL.md), and [release process](docs/RELEASING.md). Report bugs with the [issue template](https://github.com/nuxyel/bend2-nvim/issues/new/choose).

@@ -17,7 +17,7 @@ discussed before implementation.
 
 - Neovim 0.11 or newer.
 - LuaJIT from a standard Neovim build.
-- Bend 2.0.28 and 2.0.32 for compiler dogfood checks.
+- Bend 2.0.28 and 2.0.40 for compiler dogfood checks.
 - Node.js and third-party Lua packages are not required.
 
 Run the unit suite before committing:
@@ -30,7 +30,7 @@ Run compiler dogfood with each supported compiler version:
 
 ```sh
 BEND2_BIN=/path/to/bend BEND_DOGFOOD_VERSION=2.0.28 nvim --headless -u NONE -l tests/dogfood.lua
-BEND2_BIN=/path/to/bend BEND_DOGFOOD_VERSION=2.0.32 nvim --headless -u NONE -l tests/dogfood.lua
+BEND2_BIN=/path/to/bend BEND_DOGFOOD_VERSION=2.0.40 nvim --headless -u NONE -l tests/dogfood.lua
 ```
 
 For runtime changes, run the relevant unit checks and dogfood path. CI covers

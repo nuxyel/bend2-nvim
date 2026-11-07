@@ -13,8 +13,8 @@
 Without `bend`, parser diagnostics, syntax, formatting and source navigation
 remain available. Compiler-backed status is never inferred as verified.
 
-The compatibility matrix covers Bend 2.0.28 (minimum) and 2.0.32 (latest tested
-for v1). Update the tested latest version and its published checksums before
+The compatibility matrix covers Bend 2.0.28 (minimum) and 2.0.40 (latest
+tested). Update the tested latest version and its published checksums before
 tagging a stable release. Workspace indexing is bounded to 5,000 Bend files and
 skips `.git`, `.bend`, `node_modules`, `dist`, `build` and `target` directories.
 
