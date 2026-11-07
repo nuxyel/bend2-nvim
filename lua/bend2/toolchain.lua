@@ -88,6 +88,28 @@ local function compatible(version)
   return "unsupported"
 end
 
+-- the capabilities `bend guide` advertises, read into info; every release since 2.0.35 refuses `--version`, so this runs
+-- after the `version` fallback too
+local function with_capabilities(root, version, callback)
+  M.run({ "guide" }, root, function(guide)
+    local text = guide.stdout .. "\n" .. guide.stderr
+    local lower = text:lower()
+    local function capability(positive, negative)
+      for _, phrase in ipairs(negative) do if lower:find(phrase, 1, true) then return "unsupported" end end
+      for _, phrase in ipairs(positive) do if lower:find(phrase, 1, true) then return "supported" end end
+      return "unknown"
+    end
+    local info = { available = true, version = version, compatibility = compatible(version), capabilities = {
+      javascript = capability({ "javascript target", "js backend", "file.js" }, { "javascript unavailable", "javascript not supported", "javascript unsupported", "javascript disabled" }),
+      native = capability({ "native executable", "native binary", "compile to c", "clang" }, { "native unavailable", "native not supported", "native unsupported", "native disabled" }),
+      gpu = capability({ "--gpu", "gpu" }, { "gpu unavailable", "gpu not supported", "gpu unsupported", "gpu disabled" }),
+      threads = capability({ "--threads", "thread count", "cpu threads" }, { "threads unavailable", "threads not supported", "threads unsupported", "threads disabled" }),
+    } }
+    M.cache[root] = info
+    callback(info)
+  end, 5000)
+end
+
 function M.discover(root, callback, refresh)
   if not refresh and M.cache[root] then callback(M.cache[root]); return end
   M.run({ "--version" }, root, function(version_result)
@@ -95,31 +117,14 @@ function M.discover(root, callback, refresh)
       M.run({ "version" }, root, function(fallback)
         local output = fallback.stdout .. "\n" .. fallback.stderr
         local version = fallback.code == 0 and parse_version(output) or nil
-        local info = { available = version ~= nil, version = version, compatibility = compatible(version), error = version and nil or (fallback.stderr ~= "" and fallback.stderr or "Bend 2 was not found. Install it or configure bend2.cmd.") }
+        if version then with_capabilities(root, version, callback); return end
+        local info = { available = false, version = nil, compatibility = compatible(nil), error = fallback.stderr ~= "" and fallback.stderr or "Bend 2 was not found. Install it or configure bend2.cmd." }
         M.cache[root] = info
         callback(info)
       end, 3000)
       return
     end
-    local output = version_result.stdout .. "\n" .. version_result.stderr
-    local version = parse_version(output)
-    M.run({ "guide" }, root, function(guide)
-      local text = guide.stdout .. "\n" .. guide.stderr
-      local lower = text:lower()
-      local function capability(positive, negative)
-        for _, phrase in ipairs(negative) do if lower:find(phrase, 1, true) then return "unsupported" end end
-        for _, phrase in ipairs(positive) do if lower:find(phrase, 1, true) then return "supported" end end
-        return "unknown"
-      end
-      local info = { available = true, version = version, compatibility = compatible(version), capabilities = {
-        javascript = capability({ "javascript target", "js backend", "file.js" }, { "javascript unavailable", "javascript not supported", "javascript unsupported", "javascript disabled" }),
-        native = capability({ "native executable", "native binary", "compile to c", "clang" }, { "native unavailable", "native not supported", "native unsupported", "native disabled" }),
-        gpu = capability({ "--gpu", "gpu" }, { "gpu unavailable", "gpu not supported", "gpu unsupported", "gpu disabled" }),
-        threads = capability({ "--threads", "thread count", "cpu threads" }, { "threads unavailable", "threads not supported", "threads unsupported", "threads disabled" }),
-      } }
-      M.cache[root] = info
-      callback(info)
-    end, 5000)
+    with_capabilities(root, parse_version(version_result.stdout .. "\n" .. version_result.stderr), callback)
   end, 3000)
 end
 
