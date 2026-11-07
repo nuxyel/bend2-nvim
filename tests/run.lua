@@ -163,6 +163,27 @@ eq("supported", compiler_info.compatibility)
 eq("supported", toolchain.backend_capability(compiler_info, "javascript"))
 eq("supported", toolchain.backend_capability(compiler_info, "native"))
 eq("supported", toolchain.backend_capability(compiler_info, "gpu"))
+-- every release since 2.0.35 refuses --version and answers `bend version`; a fork adds a BUILD tag (2.0.40, #1907)
+local release_bend, release_info = vim.fn.tempname(), nil
+vim.fn.writefile({
+  "#!/bin/sh",
+  "case \"$1\" in",
+  "  --version) echo 'bend: unknown option --version (see bend --help)' >&2; exit 1;;",
+  "  version) echo 'bend 2.0.40+win'; exit 0;;",
+  "  guide) echo 'JavaScript target native executable --gpu --threads. A machine without a GPU runs on the CPU.'; exit 0;;",
+  "esac",
+  "exit 0",
+}, release_bend)
+vim.fn.setfperm(release_bend, "rwxr-xr-x")
+require("bend2").setup({ cmd = release_bend })
+toolchain.discover(vim.fn.getcwd(), function(info) release_info = info end, true)
+assert(vim.wait(3000, function() return release_info ~= nil end), "release compiler discovery callback timed out")
+eq("2.0.40", release_info.version, "the version fallback should read `bend version` and drop a fork's BUILD tag")
+eq("supported", release_info.compatibility)
+eq("supported", toolchain.backend_capability(release_info, "gpu"), "capabilities should be probed after the version fallback too")
+eq("supported", toolchain.backend_capability(release_info, "threads"))
+vim.fn.delete(release_bend)
+require("bend2").setup({ cmd = fake_bend })
 local unavailable_root, unavailable_info = vim.fn.tempname(), nil
 require("bend2").setup({ cmd = unavailable_root .. "/missing-bend", validation = "parser" })
 toolchain.discover(unavailable_root, function(info) unavailable_info = info end, true)
