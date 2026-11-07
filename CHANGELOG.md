@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Compiler discovery reads `bend guide`'s capabilities after the `bend version` fallback too: every Bend release
+  since 2.0.35 refuses `--version`, so the JavaScript, native, GPU and thread capabilities were never read and
+  showed as unknown.
+- CI and the compiler dogfood pin Bend 2.0.40 as the latest tested version (2.0.32 before), with its checksums.
+
 ## 1.0.0 - 2026-09-28
 
 - Native Bend filetype, syntax, indentation, snippets and upstream-aligned formatter.
