@@ -20,10 +20,10 @@ jobs:
           - os: ubuntu-24.04
             nvim: "0.12.5"
             asset: nvim-linux-x86_64
-          - os: macos-14
+          - os: macos-15
             nvim: "0.11.7"
             asset: nvim-macos-arm64
-          - os: macos-14
+          - os: macos-15
             nvim: "0.12.5"
             asset: nvim-macos-arm64
     runs-on: ${{ matrix.os }}
@@ -67,22 +67,22 @@ jobs:
             bend: "2.0.40"
             archive: bend-2.0.40-linux-x64.tar.gz
             sha256: c9ff8d67bd903fb6ad9a26b43d8a62c01021de82a44d55ce4a3dcd4732113d6b
-          - os: macos-14
+          - os: macos-15
             nvim: "0.11.7"
             bend: "2.0.28"
             archive: bend-2.0.28-darwin-arm64.tar.gz
             sha256: b7f6cece79523ff1bb66a2754073f607683015982028111eee2149114dbdb847
-          - os: macos-14
+          - os: macos-15
             nvim: "0.11.7"
             bend: "2.0.40"
             archive: bend-2.0.40-darwin-arm64.tar.gz
             sha256: b2be003b041eb6cfc65326be18f79eb2e0bae2189be79a18c507e661b4b6900b
-          - os: macos-14
+          - os: macos-15
             nvim: "0.12.5"
             bend: "2.0.28"
             archive: bend-2.0.28-darwin-arm64.tar.gz
             sha256: b7f6cece79523ff1bb66a2754073f607683015982028111eee2149114dbdb847
-          - os: macos-14
+          - os: macos-15
             nvim: "0.12.5"
             bend: "2.0.40"
             archive: bend-2.0.40-darwin-arm64.tar.gz
