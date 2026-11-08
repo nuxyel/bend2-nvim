@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.1 - 2026-11-08
 
 - Compiler discovery reads `bend guide`'s capabilities after the `bend version` fallback too: every Bend release
   since 2.0.35 refuses `--version`, so the JavaScript, native, GPU and thread capabilities were never read and
