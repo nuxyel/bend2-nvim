@@ -40,7 +40,7 @@ Bend2.nvim is installed directly from its Git repository; no separate package re
 - [Built-in `vim.pack`](docs/INSTALLATION.md#neovim-vimpack), on Neovim 0.12 and newer.
 - [Native package layout](docs/INSTALLATION.md#native-package-layout), including Neovim 0.11 without a plugin manager.
 
-Stable versions use SemVer Git tags and GitHub Releases. The [v1.0.0 release](https://github.com/nuxyel/bend2-nvim/releases/tag/v1.0.0) is available now.
+Stable versions use SemVer Git tags and GitHub Releases. The [v1.0.1 release](https://github.com/nuxyel/bend2-nvim/releases/tag/v1.0.1) is available now.
 
 ## Configure
 

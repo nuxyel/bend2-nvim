@@ -5,7 +5,7 @@ package or LuaRocks release: the plugin is pure Lua and its plugin managers
 install the tagged Git source directly. Stable releases use SemVer tags such
 as `v1.0.0`.
 
-The repository and v1.0.0 release are public. Plugin managers clone the tagged
+The repository and v1.0.1 release are public. Plugin managers clone the tagged
 source directly from GitHub; use HTTPS by default or switch to SSH if that is
 your preferred Git transport.
 
