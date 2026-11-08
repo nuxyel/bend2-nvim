@@ -2,9 +2,9 @@
 
 ## 1.0.1 - 2026-11-08
 
-- Compiler discovery reads `bend guide`'s capabilities after the `bend version` fallback too: every Bend release
-  since 2.0.35 refuses `--version`, so the JavaScript, native, GPU and thread capabilities were never read and
-  showed as unknown.
+- Compiler discovery reads `bend guide`'s capabilities after the `bend version` fallback too: the supported Bend
+  releases refuse `--version` (checked on 2.0.28, 2.0.37 and 2.0.40), so the JavaScript, native, GPU and thread
+  capabilities were never read and showed as unknown.
 - CI and the compiler dogfood pin Bend 2.0.40 as the latest tested version (2.0.32 before), with its checksums.
 
 ## 1.0.0 - 2026-09-28
